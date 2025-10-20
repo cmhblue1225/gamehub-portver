@@ -1120,6 +1120,15 @@ class HtmlGenerator {
                         grid-template-columns: 1fr;
                         grid-template-rows: auto;
                     }
+
+                    .auth-buttons {
+                        flex-direction: column;
+                        gap: 0.75rem;
+                    }
+
+                    .auth-btn {
+                        width: 100%;
+                    }
                 }
 
                 @media (min-width: 769px) and (max-width: 1024px) {
@@ -1169,6 +1178,18 @@ class HtmlGenerator {
                 .signup-btn:hover {
                     background: #5B21B6;
                     border-color: #5B21B6;
+                    transform: translateY(-2px);
+                }
+
+                .test-login-btn {
+                    background: rgba(16, 185, 129, 0.2);
+                    color: #10B981;
+                    border: 2px solid #10B981;
+                }
+
+                .test-login-btn:hover {
+                    background: #10B981;
+                    color: white;
                     transform: translateY(-2px);
                 }
 
@@ -1464,6 +1485,7 @@ class HtmlGenerator {
                     <div class="auth-buttons" id="authButtons">
                         <button class="auth-btn login-btn" onclick="showLoginModal()">로그인</button>
                         <button class="auth-btn signup-btn" onclick="showSignupModal()">회원가입</button>
+                        <button class="auth-btn test-login-btn" onclick="testAccountLogin()">🎯 테스트 계정으로 로그인</button>
                     </div>
 
                     <!-- User Info (hidden by default) -->
@@ -1707,6 +1729,49 @@ class HtmlGenerator {
             // 회원가입 모달 표시
             function showSignupModal() {
                 document.getElementById('signupModal').classList.add('show');
+            }
+
+            // 테스트 계정 자동 로그인
+            async function testAccountLogin() {
+                const testEmail = 'test@test.com';
+                const testPassword = 'test1234';
+
+                // 버튼 비활성화
+                const buttons = document.querySelectorAll('.auth-btn');
+                buttons.forEach(btn => btn.disabled = true);
+
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: testEmail,
+                            password: testPassword
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        authToken = data.session.access_token;
+                        localStorage.setItem('authToken', authToken);
+                        currentUser = data.user;
+
+                        // 성공 알림
+                        alert('테스트 계정으로 로그인되었습니다!');
+                        showUserInfo();
+                    } else {
+                        alert('테스트 계정 로그인에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
+                    }
+                } catch (error) {
+                    console.error('Test account login error:', error);
+                    alert('네트워크 오류가 발생했습니다.');
+                } finally {
+                    // 버튼 활성화
+                    buttons.forEach(btn => btn.disabled = false);
+                }
             }
 
             // 모달 닫기
