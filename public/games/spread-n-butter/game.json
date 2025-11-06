@@ -1,0 +1,34 @@
+{
+  "id": "spread-n-butter",
+  "title": "Spread 'n Butter",
+  "description": "리듬에 맞춰 버터를 바르는 협동 요리 게임! 핸드폰을 흔들어 버터를 녹이고, 기울여서 골고루 펴 바르세요.",
+  "category": "multi",
+  "icon": "🧈",
+  "version": "1.0.0",
+  "sensors": ["motion", "orientation"],
+  "maxPlayers": 4,
+  "difficulty": "medium",
+  "status": "active",
+  "featured": true,
+  "tags": ["rhythm", "cooking", "cooperative", "3D", "party"],
+  "instructions": [
+    "난이도를 선택하세요 (Easy/Normal/Hard)",
+    "QR 코드를 스캔하여 핸드폰을 연결하세요",
+    "핸드폰을 흔들어 버터를 녹이세요",
+    "핸드폰을 기울여 나이프를 조작하세요",
+    "리듬에 맞춰 버터를 골고루 펴 바르세요",
+    "높은 점수를 획득하여 Chef Rank를 달성하세요!"
+  ],
+  "controls": {
+    "shake": "버터 녹이기 / 스프레드",
+    "tilt": "나이프 각도 조절",
+    "cooperative": "여러 명이 동시에 흔들면 콤보!"
+  },
+  "features": [
+    "만화 스타일의 3D 그래픽",
+    "1~4인 협동 플레이",
+    "3가지 난이도 (Easy/Normal/Hard)",
+    "리듬 게임 메커니즘",
+    "실시간 점수 및 정확도 표시"
+  ]
+}

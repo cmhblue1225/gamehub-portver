@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spread 'n Butter - 리듬 요리 게임</title>
+
+    <!-- Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <!-- QR Code -->
+    <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+    <!-- SessionSDK -->
+    <script src="/js/SessionSDK.js"></script>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #FFF4E6 0%, #FFE5B4 100%);
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+            background: linear-gradient(180deg, #87CEEB 0%, #E0F6FF 100%);
+        }
+
+        /* UI 오버레이 */
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .ui-overlay > * {
+            pointer-events: auto;
+        }
+
+        /* 상단 HUD */
+        .top-hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .score {
+            background: rgba(255, 215, 0, 0.9);
+            padding: 10px 20px;
+            border-radius: 15px;
+            color: #333;
+        }
+
+        .round {
+            background: rgba(0, 150, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 15px;
+        }
+
+        .time {
+            background: rgba(255, 100, 100, 0.9);
+            padding: 10px 20px;
+            border-radius: 15px;
+        }
+
+        /* 리듬 인디케이터 */
+        .rhythm-indicator {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 80px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .beat-target {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border: 4px solid #FFD700;
+            border-radius: 50%;
+            background: rgba(255, 215, 0, 0.3);
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .beat-note {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: #FF6B6B;
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.8);
+            transition: transform 0.1s;
+        }
+
+        .beat-note.hit {
+            transform: scale(1.5);
+            opacity: 0;
+        }
+
+        /* 피드백 텍스트 */
+        .feedback-text {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 64px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+            animation: fadeOut 0.5s;
+            pointer-events: none;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        /* 플레이어 상태 */
+        .player-status {
+            position: absolute;
+            top: 100px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .player-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .player-item.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-left: 3px solid #4CAF50;
+        }
+
+        /* 메뉴 화면 */
+        .menu-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .menu-screen.hidden {
+            display: none;
+        }
+
+        .menu-title {
+            font-size: 72px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .menu-subtitle {
+            font-size: 24px;
+            color: #fff;
+            margin-bottom: 40px;
+        }
+
+        .difficulty-buttons {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .difficulty-btn {
+            padding: 20px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .difficulty-btn.easy {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .difficulty-btn.normal {
+            background: #FF9800;
+            color: white;
+        }
+
+        .difficulty-btn.hard {
+            background: #F44336;
+            color: white;
+        }
+
+        .difficulty-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        /* QR 코드 컨테이너 */
+        .qr-container {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+            display: none;
+        }
+
+        .qr-container.show {
+            display: block;
+        }
+
+        .qr-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .session-code {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 15px;
+            letter-spacing: 5px;
+        }
+
+        /* 결과 화면 */
+        .result-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .result-screen.show {
+            display: flex;
+        }
+
+        .result-title {
+            font-size: 64px;
+            font-weight: bold;
+            color: #FFD700;
+            margin-bottom: 30px;
+        }
+
+        .final-score {
+            font-size: 48px;
+            color: #fff;
+            margin-bottom: 20px;
+        }
+
+        .chef-rank {
+            font-size: 72px;
+            margin-bottom: 30px;
+        }
+
+        .accuracy {
+            font-size: 32px;
+            color: #4CAF50;
+            margin-bottom: 40px;
+        }
+
+        .restart-btn {
+            padding: 20px 60px;
+            font-size: 28px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(76, 175, 80, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <!-- 메뉴 화면 -->
+    <div class="menu-screen" id="menuScreen">
+        <div class="menu-title">🧈 Spread 'n Butter</div>
+        <div class="menu-subtitle">리듬에 맞춰 버터를 바르세요!</div>
+
+        <div class="difficulty-buttons">
+            <button class="difficulty-btn easy" onclick="game.selectDifficulty('easy')">
+                😊 Easy<br><small>BPM 100</small>
+            </button>
+            <button class="difficulty-btn normal" onclick="game.selectDifficulty('normal')">
+                😎 Normal<br><small>BPM 120</small>
+            </button>
+            <button class="difficulty-btn hard" onclick="game.selectDifficulty('hard')">
+                😈 Hard<br><small>BPM 150</small>
+            </button>
+        </div>
+
+        <div class="qr-container" id="qrContainer">
+            <div class="qr-title">📱 핸드폰으로 QR 코드를 스캔하세요</div>
+            <div class="session-code" id="sessionCode">------</div>
+            <div id="qrCode"></div>
+            <div style="margin-top: 20px; color: #666;">
+                대기 중인 플레이어: <span id="playerCount">0</span> / 4
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 캔버스 -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI 오버레이 -->
+    <div class="ui-overlay">
+        <div class="top-hud">
+            <div class="score">Score: <span id="scoreText">0</span></div>
+            <div class="round">Round <span id="roundText">1</span>/3</div>
+            <div class="time">Time: <span id="timeText">0.0</span>s</div>
+        </div>
+
+        <div class="player-status" id="playerStatus"></div>
+
+        <div class="rhythm-indicator" id="rhythmIndicator" style="display: none;">
+            <div class="beat-target"></div>
+        </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div class="result-screen" id="resultScreen">
+        <div class="result-title">Game Over!</div>
+        <div class="final-score">Score: <span id="finalScore">0</span></div>
+        <div class="chef-rank" id="chefRank">⭐⭐⭐</div>
+        <div class="accuracy">Accuracy: <span id="finalAccuracy">0</span>%</div>
+        <button class="restart-btn" onclick="game.restart()">🔄 Play Again</button>
+    </div>
+
+    <script>
+        // 게임 설정
+        const DIFFICULTY_CONFIG = {
+            easy: {
+                bpm: 100,
+                beatInterval: 600,
+                perfectWindow: 150,
+                goodWindow: 300,
+                shakeThreshold: 15
+            },
+            normal: {
+                bpm: 120,
+                beatInterval: 500,
+                perfectWindow: 100,
+                goodWindow: 250,
+                shakeThreshold: 20
+            },
+            hard: {
+                bpm: 150,
+                beatInterval: 400,
+                perfectWindow: 80,
+                goodWindow: 200,
+                shakeThreshold: 25
+            }
+        };
+
+        // 메인 게임 클래스
+        class SpreadNButterGame {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                // SDK 초기화
+                this.sdk = new SessionSDK({
+                    gameId: 'spread-n-butter',
+                    gameType: 'multi',
+                    debug: true
+                });
+
+                // 게임 상태
+                this.state = {
+                    connected: false,
+                    difficulty: null,
+                    playing: false,
+                    score: 0,
+                    round: 1,
+                    maxRounds: 3,
+                    time: 0,
+                    beatCount: 0,
+                    perfectHits: 0,
+                    goodHits: 0,
+                    misses: 0,
+                    butterSpread: 0  // 0~1
+                };
+
+                // 플레이어 데이터
+                this.players = new Map();
+                this.playerColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A'];
+
+                // 3D 시스템
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.models = {};
+
+                // 오디오 시스템
+                this.audioContext = null;
+                this.beatTimer = null;
+
+                // 리듬 노트
+                this.notes = [];
+
+                this.setupSDK();
+                this.init3DScene();
+                this.setupAudio();
+
+                // 리사이즈 핸들러
+                window.addEventListener('resize', () => this.onResize());
+            }
+
+            setupSDK() {
+                // 서버 연결
+                this.sdk.on('connected', async () => {
+                    console.log('✅ 서버 연결 완료');
+                    this.state.connected = true;
+                });
+
+                // 세션 생성
+                this.sdk.on('session-created', (event) => {
+                    const session = event.detail || event;
+                    console.log('✅ 세션 생성:', session.sessionCode);
+
+                    document.getElementById('sessionCode').textContent = session.sessionCode;
+
+                    // QR 코드 생성
+                    const sensorUrl = `${window.location.origin}/sensor.html?session=${session.sessionCode}`;
+                    QRCodeGenerator.generateElement(sensorUrl, 200)
+                        .then(qrElement => {
+                            const container = document.getElementById('qrCode');
+                            container.innerHTML = '';
+                            container.appendChild(qrElement);
+                        })
+                        .catch(err => {
+                            console.error('QR 코드 생성 실패:', err);
+                            document.getElementById('qrCode').innerHTML =
+                                `<p style="font-size: 12px; color: #666;">${sensorUrl}</p>`;
+                        });
+                });
+
+                // 센서 연결
+                this.sdk.on('sensor-connected', (event) => {
+                    const data = event.detail || event;
+                    console.log('📱 플레이어 연결:', data);
+
+                    const playerId = data.deviceId || data.id || `player-${this.players.size + 1}`;
+                    const playerNumber = this.players.size + 1;
+
+                    this.players.set(playerId, {
+                        id: playerId,
+                        number: playerNumber,
+                        color: this.playerColors[playerNumber - 1],
+                        shakeIntensity: 0,
+                        tilt: { x: 0, y: 0 },
+                        lastShakeTime: 0,
+                        score: 0,
+                        accuracy: 0
+                    });
+
+                    this.updatePlayerStatus();
+                    document.getElementById('playerCount').textContent = this.players.size;
+
+                    // 1명 이상 연결되면 게임 시작 가능
+                    if (this.players.size >= 1 && !this.state.playing) {
+                        setTimeout(() => this.startGame(), 2000);
+                    }
+                });
+
+                // 센서 데이터 수신
+                this.sdk.on('sensor-data', (event) => {
+                    const sensorData = event.detail || event;
+                    this.processSensorData(sensorData);
+                });
+
+                // 센서 연결 해제
+                this.sdk.on('sensor-disconnected', (event) => {
+                    const data = event.detail || event;
+                    const playerId = data.deviceId || data.id;
+                    this.players.delete(playerId);
+                    this.updatePlayerStatus();
+                    document.getElementById('playerCount').textContent = this.players.size;
+                });
+            }
+
+            processSensorData(sensorData) {
+                if (!sensorData || !sensorData.data) return;
+
+                const playerId = sensorData.deviceId || sensorData.id || 'player-1';
+                const player = this.players.get(playerId);
+                if (!player) return;
+
+                const data = sensorData.data;
+                const config = DIFFICULTY_CONFIG[this.state.difficulty];
+
+                // 가속도 크기 계산
+                const accelMagnitude = Math.sqrt(
+                    Math.pow(data.acceleration.x || 0, 2) +
+                    Math.pow(data.acceleration.y || 0, 2) +
+                    Math.pow(data.acceleration.z || 0, 2)
+                );
+
+                // 흔들기 감지
+                if (accelMagnitude > config.shakeThreshold) {
+                    const now = Date.now();
+                    if (now - player.lastShakeTime > 200) {  // 디바운스
+                        player.lastShakeTime = now;
+                        this.onPlayerShake(player, accelMagnitude);
+                    }
+                }
+
+                // 기울기 매핑
+                player.tilt.x = data.orientation.gamma || 0;  // -90~90
+                player.tilt.y = data.orientation.beta || 0;   // -180~180
+
+                // 흔들기 강도 감소 (자연스러운 감쇠)
+                player.shakeIntensity = Math.max(0, player.shakeIntensity - 0.01);
+
+                this.updatePlayerStatus();
+            }
+
+            onPlayerShake(player, magnitude) {
+                if (!this.state.playing) return;
+
+                // 흔들기 강도 증가
+                player.shakeIntensity = Math.min(1, player.shakeIntensity + 0.2);
+
+                // 타이밍 체크
+                const timing = this.checkBeatTiming();
+
+                if (timing.rating === 'PERFECT') {
+                    this.state.perfectHits++;
+                    this.state.score += 200;
+                    player.score += 200;
+                    this.showFeedback('Perfect! 🌟', '#FFD700');
+                    this.playSound('perfect');
+                } else if (timing.rating === 'GOOD') {
+                    this.state.goodHits++;
+                    this.state.score += 100;
+                    player.score += 100;
+                    this.showFeedback('Good! ✨', '#4ECDC4');
+                    this.playSound('good');
+                } else {
+                    this.state.misses++;
+                    this.showFeedback('Miss...', '#FF6B6B');
+                }
+
+                // 버터 퍼지기
+                this.state.butterSpread = Math.min(1, this.state.butterSpread + 0.05);
+                this.updateBreadTexture();
+
+                this.updateUI();
+            }
+
+            checkBeatTiming() {
+                const config = DIFFICULTY_CONFIG[this.state.difficulty];
+                const now = performance.now();
+                const beatTime = (now % config.beatInterval) / config.beatInterval;
+
+                // 0 또는 1에 가까울수록 정박
+                const timingError = Math.min(beatTime, 1 - beatTime) * config.beatInterval;
+
+                if (timingError < config.perfectWindow) {
+                    return { rating: 'PERFECT', multiplier: 2.0 };
+                } else if (timingError < config.goodWindow) {
+                    return { rating: 'GOOD', multiplier: 1.5 };
+                } else {
+                    return { rating: 'MISS', multiplier: 1.0 };
+                }
+            }
+
+            showFeedback(text, color) {
+                const feedback = document.createElement('div');
+                feedback.className = 'feedback-text';
+                feedback.textContent = text;
+                feedback.style.color = color;
+                document.body.appendChild(feedback);
+
+                setTimeout(() => feedback.remove(), 500);
+            }
+
+            updatePlayerStatus() {
+                const container = document.getElementById('playerStatus');
+                container.innerHTML = '<h3 style="margin-bottom: 10px;">👥 Players</h3>';
+
+                this.players.forEach(player => {
+                    const div = document.createElement('div');
+                    div.className = 'player-item active';
+                    div.style.borderColor = player.color;
+                    div.innerHTML = `
+                        <div style="color: ${player.color};">Player ${player.number}</div>
+                        <div>Score: ${player.score}</div>
+                        <div>Shake: ${(player.shakeIntensity * 100).toFixed(0)}%</div>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            updateUI() {
+                document.getElementById('scoreText').textContent = this.state.score;
+                document.getElementById('roundText').textContent = this.state.round;
+                document.getElementById('timeText').textContent = this.state.time.toFixed(1);
+            }
+
+            selectDifficulty(difficulty) {
+                this.state.difficulty = difficulty;
+                console.log('난이도 선택:', difficulty.toUpperCase());
+
+                // QR 컨테이너 표시
+                document.getElementById('qrContainer').classList.add('show');
+
+                // 세션 생성
+                this.sdk.createSession();
+            }
+
+            async startGame() {
+                if (this.players.size === 0) {
+                    alert('플레이어가 연결되지 않았습니다!');
+                    return;
+                }
+
+                console.log('🎮 게임 시작!');
+                this.state.playing = true;
+
+                // 메뉴 숨기기
+                document.getElementById('menuScreen').classList.add('hidden');
+
+                // 리듬 인디케이터 표시
+                document.getElementById('rhythmIndicator').style.display = 'flex';
+
+                // 3D 모델 로딩
+                await this.load3DModels();
+
+                // 카운트다운
+                await this.countdown();
+
+                // 게임 시작
+                this.startRound();
+            }
+
+            async countdown() {
+                const counts = ['3', '2', '1', 'Start!'];
+                for (const count of counts) {
+                    this.showFeedback(count, '#FFD700');
+                    this.playSound('beat');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            startRound() {
+                const config = DIFFICULTY_CONFIG[this.state.difficulty];
+
+                // 리듬 타이머 시작
+                let lastBeatTime = performance.now();
+                this.beatTimer = setInterval(() => {
+                    this.onBeat();
+                    lastBeatTime = performance.now();
+                }, config.beatInterval);
+
+                // 게임 타이머
+                this.gameTimer = setInterval(() => {
+                    this.state.time += 0.1;
+                    this.updateUI();
+
+                    // 30초 후 라운드 종료
+                    if (this.state.time >= 30) {
+                        this.endRound();
+                    }
+                }, 100);
+
+                // 렌더 루프
+                this.animate();
+            }
+
+            onBeat() {
+                this.state.beatCount++;
+
+                // 비주얼 피드백
+                this.flashBeatIndicator();
+
+                // 비트 사운드
+                this.playSound('beat');
+
+                // 리듬 노트 생성
+                this.createBeatNote();
+            }
+
+            flashBeatIndicator() {
+                const target = document.querySelector('.beat-target');
+                target.style.background = 'rgba(255, 215, 0, 0.8)';
+                setTimeout(() => {
+                    target.style.background = 'rgba(255, 215, 0, 0.3)';
+                }, 100);
+            }
+
+            createBeatNote() {
+                const container = document.getElementById('rhythmIndicator');
+                const note = document.createElement('div');
+                note.className = 'beat-note';
+                note.style.right = '-40px';
+                container.appendChild(note);
+
+                // 애니메이션
+                let position = -40;
+                const animate = () => {
+                    position += 5;
+                    note.style.right = `${position}px`;
+
+                    if (position < 600) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        note.remove();
+                    }
+                };
+                animate();
+            }
+
+            endRound() {
+                clearInterval(this.beatTimer);
+                clearInterval(this.gameTimer);
+
+                if (this.state.round < this.state.maxRounds) {
+                    // 다음 라운드
+                    this.state.round++;
+                    this.state.time = 0;
+                    setTimeout(() => this.startRound(), 3000);
+                } else {
+                    // 게임 종료
+                    this.endGame();
+                }
+            }
+
+            endGame() {
+                this.state.playing = false;
+
+                // 정확도 계산
+                const totalHits = this.state.perfectHits + this.state.goodHits + this.state.misses;
+                const accuracy = totalHits > 0
+                    ? ((this.state.perfectHits * 2 + this.state.goodHits) / (totalHits * 2) * 100)
+                    : 0;
+
+                // Chef Rank 계산
+                let rank = '';
+                if (accuracy >= 90) rank = '⭐⭐⭐⭐⭐';
+                else if (accuracy >= 75) rank = '⭐⭐⭐⭐';
+                else if (accuracy >= 60) rank = '⭐⭐⭐';
+                else if (accuracy >= 40) rank = '⭐⭐';
+                else rank = '⭐';
+
+                // 결과 표시
+                document.getElementById('finalScore').textContent = this.state.score;
+                document.getElementById('chefRank').textContent = rank;
+                document.getElementById('finalAccuracy').textContent = accuracy.toFixed(1);
+                document.getElementById('resultScreen').classList.add('show');
+
+                // 리듬 인디케이터 숨기기
+                document.getElementById('rhythmIndicator').style.display = 'none';
+            }
+
+            restart() {
+                // 상태 초기화
+                this.state.score = 0;
+                this.state.round = 1;
+                this.state.time = 0;
+                this.state.beatCount = 0;
+                this.state.perfectHits = 0;
+                this.state.goodHits = 0;
+                this.state.misses = 0;
+                this.state.butterSpread = 0;
+
+                // 플레이어 점수 초기화
+                this.players.forEach(player => {
+                    player.score = 0;
+                    player.shakeIntensity = 0;
+                });
+
+                // UI 초기화
+                document.getElementById('resultScreen').classList.remove('show');
+                document.getElementById('menuScreen').classList.remove('hidden');
+                document.getElementById('qrContainer').classList.remove('show');
+
+                this.updateUI();
+                this.updatePlayerStatus();
+            }
+
+            // ===== 3D 시스템 =====
+
+            init3DScene() {
+                // 씬 생성
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x87CEEB);
+
+                // 카메라
+                this.camera = new THREE.PerspectiveCamera(
+                    75,
+                    window.innerWidth / window.innerHeight,
+                    0.1,
+                    1000
+                );
+                this.camera.position.set(0, 3, 5);
+                this.camera.lookAt(0, 0, 0);
+
+                // 렌더러
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas,
+                    antialias: true
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.shadowMap.enabled = true;
+
+                // 조명
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                this.scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(5, 10, 5);
+                directionalLight.castShadow = true;
+                this.scene.add(directionalLight);
+
+                const pointLight = new THREE.PointLight(0xFFD700, 0.5);
+                pointLight.position.set(0, 5, 0);
+                this.scene.add(pointLight);
+            }
+
+            async load3DModels() {
+                const loader = new THREE.GLTFLoader();
+
+                try {
+                    // 빵 로딩
+                    const bread = await this.loadModel(loader, 'assets/models/bread-slice.glb');
+                    bread.scale.set(2, 2, 2);
+                    bread.position.set(0, 0, 0);
+                    bread.rotation.x = -Math.PI / 2;
+                    this.scene.add(bread);
+                    this.models.bread = bread;
+
+                    // 버터 로딩
+                    const butter = await this.loadModel(loader, 'assets/models/butter-block.glb');
+                    butter.scale.set(0.8, 0.8, 0.8);
+                    butter.position.set(0, 2, 2);
+                    this.scene.add(butter);
+                    this.models.butter = butter;
+
+                    // 나이프 로딩
+                    const knife = await this.loadModel(loader, 'assets/models/butter-knife.glb');
+                    knife.scale.set(1, 1, 1);
+                    knife.position.set(-2, 1, 0);
+                    knife.rotation.z = Math.PI / 4;
+                    this.scene.add(knife);
+                    this.models.knife = knife;
+
+                    console.log('✅ 3D 모델 로딩 완료');
+                } catch (error) {
+                    console.error('❌ 3D 모델 로딩 실패:', error);
+                }
+            }
+
+            loadModel(loader, url) {
+                return new Promise((resolve, reject) => {
+                    loader.load(
+                        url,
+                        (gltf) => resolve(gltf.scene),
+                        undefined,
+                        (error) => reject(error)
+                    );
+                });
+            }
+
+            updateBreadTexture() {
+                // 버터가 퍼진 정도에 따라 빵 색상 변경 (간단한 구현)
+                if (this.models.bread) {
+                    const yellowIntensity = this.state.butterSpread;
+                    this.models.bread.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            child.material.emissive = new THREE.Color(
+                                yellowIntensity * 0.5,
+                                yellowIntensity * 0.4,
+                                0
+                            );
+                        }
+                    });
+                }
+            }
+
+            animate() {
+                if (!this.state.playing) return;
+
+                requestAnimationFrame(() => this.animate());
+
+                // 버터 회전
+                if (this.models.butter) {
+                    this.models.butter.rotation.y += 0.01;
+                }
+
+                // 나이프 애니메이션 (플레이어 기울기에 따라)
+                if (this.models.knife && this.players.size > 0) {
+                    const firstPlayer = this.players.values().next().value;
+                    if (firstPlayer) {
+                        this.models.knife.rotation.z = (firstPlayer.tilt.x / 90) * (Math.PI / 4);
+                    }
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onResize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                if (this.camera) {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                }
+
+                if (this.renderer) {
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                }
+            }
+
+            // ===== 오디오 시스템 =====
+
+            setupAudio() {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            playSound(type) {
+                if (!this.audioContext) return;
+
+                const now = this.audioContext.currentTime;
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+
+                switch (type) {
+                    case 'beat':
+                        oscillator.frequency.value = 440;  // A4
+                        gainNode.gain.setValueAtTime(0.1, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.1);
+                        break;
+
+                    case 'perfect':
+                        oscillator.frequency.value = 880;  // A5
+                        gainNode.gain.setValueAtTime(0.2, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.3);
+                        break;
+
+                    case 'good':
+                        oscillator.frequency.value = 660;  // E5
+                        gainNode.gain.setValueAtTime(0.15, now);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                        oscillator.start(now);
+                        oscillator.stop(now + 0.2);
+                        break;
+                }
+            }
+        }
+
+        // 게임 인스턴스 생성
+        const game = new SpreadNButterGame();
+
+        console.log('🧈 Spread \'n Butter 게임이 로드되었습니다!');
+    </script>
+</body>
+</html>
