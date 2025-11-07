@@ -116,6 +116,71 @@
             margin-right: 5px;
         }
 
+        /* 속도계 */
+        .speed-meter {
+            position: absolute;
+            top: 100px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 25px;
+            border-radius: 12px;
+            color: #4ECDC4;
+            font-size: 20px;
+            font-weight: bold;
+            border: 2px solid #4ECDC4;
+            box-shadow: 0 0 20px rgba(78, 205, 196, 0.5);
+        }
+
+        .speed-meter .label {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+
+        .speed-value {
+            font-size: 28px;
+            color: #4ECDC4;
+            text-shadow: 0 0 10px #4ECDC4;
+        }
+
+        /* 기울기 인디케이터 */
+        .tilt-indicator {
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 120px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0,0,0,0.7), rgba(0,0,0,0.9));
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .tilt-dot {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, #4CAF50, #8BC34A);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px #4CAF50, 0 0 40px #4CAF50;
+            transition: all 0.1s ease-out;
+        }
+
+        .tilt-center {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
         /* 메뉴 화면 */
         .menu-screen {
             position: fixed;
@@ -394,6 +459,18 @@
             <div class="hud-item hud-distance">📏 <span id="distanceText">0</span>m</div>
         </div>
 
+        <!-- 속도계 -->
+        <div class="speed-meter">
+            <div class="label">속도</div>
+            <div class="speed-value"><span id="speedText">0</span> m/s</div>
+        </div>
+
+        <!-- 기울기 인디케이터 -->
+        <div class="tilt-indicator">
+            <div class="tilt-center"></div>
+            <div class="tilt-dot" id="tiltDot"></div>
+        </div>
+
         <div class="bottom-hud">
             <div class="item-count">
                 <span class="icon">⭐</span>
@@ -495,7 +572,7 @@
 
                 // 센서 데이터
                 this.sensorData = null;
-                this.forceMultiplier = 30;
+                this.forceMultiplier = 60;  // 30 → 60 (2배 반응성)
 
                 // 리사이즈 핸들러
                 window.addEventListener('resize', () => this.onResize());
@@ -568,23 +645,23 @@
 
                 this.sensorData = sensorData.data;
 
-                // 기울기 → 물리력 변환
+                // 기울기 → 물리력 변환 (개선)
                 if (this.sensorData.orientation && this.ballBody) {
                     const gamma = this.sensorData.orientation.gamma || 0;  // 좌우
                     const beta = this.sensorData.orientation.beta || 0;    // 전후
 
+                    // 데드존 추가 (미세한 흔들림 무시)
+                    const deadzone = 3;
+                    const gammaFiltered = Math.abs(gamma) < deadzone ? 0 : gamma;
+                    const betaFiltered = Math.abs(beta) < deadzone ? 0 : beta;
+
                     // 각도 → 힘 (삼각함수)
-                    const forceX = Math.sin(gamma * Math.PI / 180) * this.forceMultiplier;
-                    const forceZ = Math.sin(beta * Math.PI / 180) * this.forceMultiplier;
+                    const forceX = Math.sin(gammaFiltered * Math.PI / 180) * this.forceMultiplier;
+                    const forceZ = Math.sin(betaFiltered * Math.PI / 180) * this.forceMultiplier;
 
                     // 물리 엔진에 힘 적용
                     const force = new CANNON.Vec3(forceX, 0, forceZ);
-                    const worldPoint = new CANNON.Vec3(
-                        this.ballBody.position.x,
-                        this.ballBody.position.y,
-                        this.ballBody.position.z
-                    );
-                    this.ballBody.applyForce(force, worldPoint);
+                    this.ballBody.applyForce(force, this.ballBody.position);
                 }
             }
 
@@ -607,43 +684,69 @@
                 this.camera.lookAt(0, 0, 0);
 
                 // Renderer
+                // 렌더러 고급 설정
                 this.renderer = new THREE.WebGLRenderer({
                     canvas: this.canvas,
-                    antialias: true
+                    antialias: true,
+                    powerPreference: 'high-performance',
+                    alpha: false,
+                    stencil: false
                 });
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+                // 톤매핑 (현실적 색감)
+                this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                this.renderer.toneMappingExposure = 1.2;
+                this.renderer.outputEncoding = THREE.sRGBEncoding;
+
+                // 그림자 품질 향상
                 this.renderer.shadowMap.enabled = true;
                 this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.renderer.shadowMap.autoUpdate = true;
 
-                // 조명
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                // 조명 시스템 업그레이드
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
                 this.scene.add(ambientLight);
 
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(10, 20, 10);
-                directionalLight.castShadow = true;
-                directionalLight.shadow.mapSize.width = 2048;
-                directionalLight.shadow.mapSize.height = 2048;
-                directionalLight.shadow.camera.near = 0.5;
-                directionalLight.shadow.camera.far = 100;
-                directionalLight.shadow.camera.left = -50;
-                directionalLight.shadow.camera.right = 50;
-                directionalLight.shadow.camera.top = 50;
-                directionalLight.shadow.camera.bottom = -50;
-                this.scene.add(directionalLight);
+                // 구슬 추적 DirectionalLight
+                this.directionalLight = new THREE.DirectionalLight(0xFFFFAA, 1.2);
+                this.directionalLight.position.set(10, 20, 10);
+                this.directionalLight.castShadow = true;
 
-                const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x90EE90, 0.6);
+                // 그림자 품질 4K
+                this.directionalLight.shadow.mapSize.width = 4096;
+                this.directionalLight.shadow.mapSize.height = 4096;
+                this.directionalLight.shadow.camera.near = 0.1;
+                this.directionalLight.shadow.camera.far = 150;
+                this.directionalLight.shadow.camera.left = -30;
+                this.directionalLight.shadow.camera.right = 30;
+                this.directionalLight.shadow.camera.top = 30;
+                this.directionalLight.shadow.camera.bottom = -30;
+                this.directionalLight.shadow.bias = -0.0001;
+                this.directionalLight.shadow.radius = 2;
+
+                this.scene.add(this.directionalLight);
+
+                // HemisphereLight 색상 개선
+                const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x5A8F5A, 0.8);
                 this.scene.add(hemisphereLight);
+
+                // PointLight (구슬 주변 강조)
+                this.ballLight = new THREE.PointLight(0xFFFFFF, 0.5, 5);
+                this.scene.add(this.ballLight);
 
                 console.log('✅ 3D 엔진 초기화 완료');
             }
 
             initPhysics() {
-                // Cannon.js 월드
+                // Cannon.js 월드 (고급 설정)
                 this.world = new CANNON.World();
-                this.world.gravity.set(0, -9.82, 0);
-                this.world.broadphase = new CANNON.NaiveBroadphase();
-                this.world.solver.iterations = 10;
+                this.world.gravity.set(0, -12, 0);  // -9.82 → -12 (더 빠른 낙하)
+                this.world.broadphase = new CANNON.SAPBroadphase(this.world);  // 성능 개선
+                this.world.solver.iterations = 15;  // 10 → 15 (더 정확한 물리)
+                this.world.defaultContactMaterial.contactEquationStiffness = 1e8;
+                this.world.defaultContactMaterial.contactEquationRelaxation = 3;
 
                 // 재질
                 const ballMaterial = new CANNON.Material('ball');
@@ -653,8 +756,10 @@
                     ballMaterial,
                     groundMaterial,
                     {
-                        friction: 0.3,
-                        restitution: 0.6
+                        friction: 0.4,           // 0.3 → 0.4 (더 정확한 제어)
+                        restitution: 0.4,        // 0.6 → 0.4 (덜 튕김)
+                        contactEquationStiffness: 1e8,
+                        contactEquationRelaxation: 3
                     }
                 );
                 this.world.addContactMaterial(contactMaterial);
@@ -662,16 +767,16 @@
                 // 구슬 물리 바디
                 const ballShape = new CANNON.Sphere(0.5);
                 this.ballBody = new CANNON.Body({
-                    mass: 1,
+                    mass: 1.2,  // 1 → 1.2 (더 무거운 느낌)
                     shape: ballShape,
                     material: ballMaterial,
                     position: new CANNON.Vec3(0, 2, 0),
-                    linearDamping: 0.3,
-                    angularDamping: 0.3
+                    linearDamping: 0.2,   // 0.3 → 0.2 (더 반응적)
+                    angularDamping: 0.2   // 0.3 → 0.2
                 });
                 this.world.addBody(this.ballBody);
 
-                console.log('✅ 물리 엔진 초기화 완료');
+                console.log('✅ 물리 엔진 초기화 완료 (고급 설정)');
             }
 
             async loadModels() {
@@ -685,11 +790,23 @@
                 console.log('📦 3D 모델 로딩 중...');
 
                 try {
-                    // 구슬
-                    const marble = await this.loadModel(loader, 'assets/models/marble-ball.glb');
+                    // 고품질 구슬 (Hyper3D)
+                    const marble = await this.loadModel(loader, 'assets/models/marble-ball-hd.glb');
                     marble.scale.set(1, 1, 1);
                     marble.castShadow = true;
                     marble.receiveShadow = true;
+
+                    // 재질 업그레이드
+                    marble.traverse((child) => {
+                        if (child.isMesh) {
+                            child.material.metalness = 0.9;
+                            child.material.roughness = 0.1;
+                            child.material.envMapIntensity = 1.5;
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+
                     this.scene.add(marble);
                     this.ballMesh = marble;
                     this.models.marble = marble;
@@ -786,17 +903,43 @@
                     this.ballMesh.quaternion.copy(this.ballBody.quaternion);
                 }
 
-                // 카메라 추적 (부드러운 이동)
+                // 카메라 추적 (속도 기반 다이나믹 거리)
                 if (this.ballBody) {
+                    const speed = this.ballBody.velocity.length();
+                    const baseDist = 10;
+                    const speedFactor = Math.min(speed / 20, 1);
+                    const targetDist = baseDist + speedFactor * 5;
+
                     const targetX = this.ballBody.position.x;
-                    const targetY = this.ballBody.position.y + 5;
-                    const targetZ = this.ballBody.position.z + 10;
+                    const targetY = this.ballBody.position.y + 5 + speedFactor * 2;
+                    const targetZ = this.ballBody.position.z + targetDist;
 
-                    this.camera.position.x += (targetX - this.camera.position.x) * 0.1;
-                    this.camera.position.y += (targetY - this.camera.position.y) * 0.1;
-                    this.camera.position.z += (targetZ - this.camera.position.z) * 0.1;
+                    this.camera.position.x += (targetX - this.camera.position.x) * 0.15;
+                    this.camera.position.y += (targetY - this.camera.position.y) * 0.15;
+                    this.camera.position.z += (targetZ - this.camera.position.z) * 0.15;
 
-                    this.camera.lookAt(this.ballBody.position.x, this.ballBody.position.y, this.ballBody.position.z);
+                    this.camera.lookAt(
+                        this.ballBody.position.x,
+                        this.ballBody.position.y + 1,
+                        this.ballBody.position.z
+                    );
+
+                    // 속도감 강조 (FOV 변경)
+                    const baseFOV = 75;
+                    const targetFOV = baseFOV + speedFactor * 10;
+                    this.camera.fov += (targetFOV - this.camera.fov) * 0.05;
+                    this.camera.updateProjectionMatrix();
+
+                    // 조명 위치 업데이트 (구슬 추적)
+                    if (this.ballLight) {
+                        this.ballLight.position.copy(this.ballBody.position);
+                        this.ballLight.position.y += 2;
+                    }
+
+                    if (this.directionalLight) {
+                        this.directionalLight.target.position.copy(this.ballBody.position);
+                        this.directionalLight.target.updateMatrixWorld();
+                    }
                 }
 
                 // 지형 업데이트
@@ -873,38 +1016,64 @@
             }
 
             createParticles(position, color) {
-                const particleCount = 10;
-                const geometry = new THREE.SphereGeometry(0.05, 4, 4);
-                const material = new THREE.MeshBasicMaterial({ color: color });
+                const particleCount = 50;  // 10 → 50
+
+                // GPU 기반 파티클 (THREE.Points)
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(particleCount * 3);
+                const velocities = [];
 
                 for (let i = 0; i < particleCount; i++) {
-                    const particle = new THREE.Mesh(geometry, material);
-                    particle.position.copy(position);
-                    this.scene.add(particle);
+                    positions[i * 3] = position.x;
+                    positions[i * 3 + 1] = position.y;
+                    positions[i * 3 + 2] = position.z;
 
-                    // 랜덤 방향으로 날리기
-                    const vx = (Math.random() - 0.5) * 2;
-                    const vy = Math.random() * 2;
-                    const vz = (Math.random() - 0.5) * 2;
-
-                    let life = 0;
-                    const animate = () => {
-                        life += 0.02;
-                        if (life > 1) {
-                            this.scene.remove(particle);
-                            return;
-                        }
-
-                        particle.position.x += vx * 0.05;
-                        particle.position.y += vy * 0.05 - life * 0.1;  // 중력
-                        particle.position.z += vz * 0.05;
-                        particle.material.opacity = 1 - life;
-                        particle.material.transparent = true;
-
-                        requestAnimationFrame(animate);
-                    };
-                    animate();
+                    velocities.push({
+                        x: (Math.random() - 0.5) * 3,
+                        y: Math.random() * 3,
+                        z: (Math.random() - 0.5) * 3
+                    });
                 }
+
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+                const material = new THREE.PointsMaterial({
+                    color: color,
+                    size: 0.15,
+                    transparent: true,
+                    opacity: 1.0,
+                    blending: THREE.AdditiveBlending,  // 빛나는 효과
+                    depthWrite: false,
+                    sizeAttenuation: true
+                });
+
+                const particles = new THREE.Points(geometry, material);
+                this.scene.add(particles);
+
+                let life = 0;
+                const animate = () => {
+                    life += 0.01;
+                    if (life > 1) {
+                        this.scene.remove(particles);
+                        geometry.dispose();
+                        material.dispose();
+                        return;
+                    }
+
+                    const posArray = particles.geometry.attributes.position.array;
+                    for (let i = 0; i < particleCount; i++) {
+                        posArray[i * 3] += velocities[i].x * 0.05;
+                        posArray[i * 3 + 1] += velocities[i].y * 0.05 - life * 0.15;  // 중력
+                        posArray[i * 3 + 2] += velocities[i].z * 0.05;
+                    }
+                    particles.geometry.attributes.position.needsUpdate = true;
+
+                    material.opacity = 1 - life;
+                    material.size = 0.15 * (1 + life);  // 크기 증가
+
+                    requestAnimationFrame(animate);
+                };
+                animate();
             }
 
             checkGameOver() {
@@ -1020,6 +1189,28 @@
                 document.getElementById('distanceText').textContent = Math.floor(this.state.distance);
                 document.getElementById('starsText').textContent = this.state.starsCollected;
                 document.getElementById('coinsText').textContent = this.state.coinsCollected;
+
+                // 속도계 업데이트
+                if (this.ballBody) {
+                    const speed = this.ballBody.velocity.length();
+                    document.getElementById('speedText').textContent = speed.toFixed(1);
+                }
+
+                // 기울기 인디케이터 업데이트
+                if (this.sensorData && this.sensorData.orientation) {
+                    const gamma = this.sensorData.orientation.gamma || 0;
+                    const beta = this.sensorData.orientation.beta || 0;
+
+                    const tiltDot = document.getElementById('tiltDot');
+                    if (tiltDot) {
+                        // -45 ~ 45도를 -50% ~ 50% 범위로 변환
+                        const maxAngle = 45;
+                        const offsetX = (Math.max(-maxAngle, Math.min(maxAngle, gamma)) / maxAngle) * 50;
+                        const offsetY = (Math.max(-maxAngle, Math.min(maxAngle, beta)) / maxAngle) * 50;
+
+                        tiltDot.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
+                    }
+                }
             }
 
             restart() {
@@ -1130,68 +1321,88 @@
             }
 
             createObstacle(type, zPosition) {
-                let geometry, material;
+                if (!this.game.models.obstacles) return;
 
-                if (type === 'rock') {
-                    geometry = new THREE.DodecahedronGeometry(1, 0);
-                    material = new THREE.MeshStandardMaterial({ color: 0x888888 });
-                } else if (type === 'tree') {
-                    // 간단한 나무 (원기둥 + 구)
-                    const group = new THREE.Group();
-
-                    const trunk = new THREE.Mesh(
-                        new THREE.CylinderGeometry(0.3, 0.3, 3, 8),
-                        new THREE.MeshStandardMaterial({ color: 0x8B4513 })
-                    );
-                    trunk.position.y = 1.5;
-
-                    const leaves = new THREE.Mesh(
-                        new THREE.SphereGeometry(1, 8, 8),
-                        new THREE.MeshStandardMaterial({ color: 0x55DD55 })
-                    );
-                    leaves.position.y = 3;
-
-                    group.add(trunk);
-                    group.add(leaves);
-
-                    const x = (Math.random() - 0.5) * 16;
-                    const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
-                    group.position.set(x, 0, z);
-                    group.castShadow = true;
-
-                    this.game.scene.add(group);
-
-                    // 물리 바디
-                    const shape = new CANNON.Cylinder(0.3, 0.3, 3, 8);
-                    const body = new CANNON.Body({
-                        mass: 0,
-                        shape: shape,
-                        position: new CANNON.Vec3(x, 1.5, z)
-                    });
-                    this.game.world.addBody(body);
-
-                    this.game.obstacles.push({ mesh: group, body: body, type: 'tree' });
-                    return;
-                }
-
-                const mesh = new THREE.Mesh(geometry, material);
+                let obstacleModel;
                 const x = (Math.random() - 0.5) * 16;
                 const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
-                mesh.position.set(x, 1, z);  // y=1로 변경 (지형 위에 배치)
-                mesh.castShadow = true;
 
-                this.game.scene.add(mesh);
+                if (type === 'rock') {
+                    // GLB에서 바위 메시 복제
+                    const rockOriginal = this.game.models.obstacles.getObjectByName('Rock');
+                    if (rockOriginal) {
+                        obstacleModel = rockOriginal.clone();
+                        obstacleModel.scale.set(1.5, 1.5, 1.5);
+                        obstacleModel.position.set(x, 0.5, z);
 
-                // 물리 바디
-                const shape = new CANNON.Sphere(1);
-                const body = new CANNON.Body({
-                    mass: 0,
-                    shape: shape,
-                    position: new CANNON.Vec3(x, 1, z)  // y=1로 변경
-                });
-                this.game.world.addBody(body);
+                        // 재질 업그레이드
+                        obstacleModel.traverse((child) => {
+                            if (child.isMesh) {
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                                if (child.material) {
+                                    child.material.roughness = 0.9;
+                                }
+                            }
+                        });
 
-                this.game.obstacles.push({ mesh: mesh, body: body, type: 'rock' });
+                        this.game.scene.add(obstacleModel);
+
+                        // 물리 바디 (구 형태)
+                        const shape = new CANNON.Sphere(1.2);
+                        const body = new CANNON.Body({
+                            mass: 0,
+                            shape: shape,
+                            position: new CANNON.Vec3(x, 0.5, z)
+                        });
+                        this.game.world.addBody(body);
+
+                        this.game.obstacles.push({ mesh: obstacleModel, body: body, type: 'rock' });
+                    }
+                } else if (type === 'tree') {
+                    // GLB에서 나무 메시 복제
+                    const treeGroup = new THREE.Group();
+
+                    const trunkOriginal = this.game.models.obstacles.getObjectByName('Tree_Trunk');
+                    const leavesOriginal = this.game.models.obstacles.getObjectByName('Tree_Leaves');
+
+                    if (trunkOriginal && leavesOriginal) {
+                        const trunk = trunkOriginal.clone();
+                        const leaves = leavesOriginal.clone();
+
+                        trunk.traverse((child) => {
+                            if (child.isMesh) {
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                            }
+                        });
+
+                        leaves.traverse((child) => {
+                            if (child.isMesh) {
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                            }
+                        });
+
+                        treeGroup.add(trunk);
+                        treeGroup.add(leaves);
+                        treeGroup.scale.set(2, 2, 2);
+                        treeGroup.position.set(x, 0, z);
+
+                        this.game.scene.add(treeGroup);
+
+                        // 물리 바디 (원기둥)
+                        const shape = new CANNON.Cylinder(0.6, 0.6, 3, 8);
+                        const body = new CANNON.Body({
+                            mass: 0,
+                            shape: shape,
+                            position: new CANNON.Vec3(x, 1.5, z)
+                        });
+                        this.game.world.addBody(body);
+
+                        this.game.obstacles.push({ mesh: treeGroup, body: body, type: 'tree' });
+                    }
+                }
             }
 
             placeItems(zPosition) {
@@ -1204,46 +1415,66 @@
             }
 
             createItem(type, zPosition) {
-                let geometry, material, color;
+                if (!this.game.models.collectibles) return;
 
-                if (type === 'star') {
-                    geometry = new THREE.SphereGeometry(0.3, 8, 8);
-                    material = new THREE.MeshStandardMaterial({
-                        color: 0xFFD700,
-                        emissive: 0xFFD700,
-                        emissiveIntensity: 0.5,
-                        metalness: 0.3,
-                        roughness: 0.4
-                    });
-                    color = 0xFFD700;
-                } else {
-                    geometry = new THREE.CylinderGeometry(0.25, 0.25, 0.1, 20);
-                    material = new THREE.MeshStandardMaterial({
-                        color: 0xFFC700,
-                        metalness: 0.8,
-                        roughness: 0.3
-                    });
-                    color = 0xFFC700;
-                }
-
-                const mesh = new THREE.Mesh(geometry, material);
+                let itemModel;
                 const x = (Math.random() - 0.5) * 16;
                 const y = 0.5;
                 const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
-                mesh.position.set(x, y, z);
 
-                this.game.scene.add(mesh);
+                if (type === 'star') {
+                    // GLB에서 별 메시 복제
+                    const starOriginal = this.game.models.collectibles.getObjectByName('Star');
+                    if (starOriginal) {
+                        itemModel = starOriginal.clone();
+                        itemModel.scale.set(0.8, 0.8, 0.8);
+                        itemModel.position.set(x, y, z);
+
+                        // 발광 효과 강화
+                        itemModel.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                child.material.emissive = new THREE.Color(0xFFD700);
+                                child.material.emissiveIntensity = 2.0;
+                                child.material.metalness = 0.3;
+                                child.material.roughness = 0.4;
+                            }
+                        });
+                    }
+                } else {
+                    // GLB에서 코인 메시 복제
+                    const coinOriginal = this.game.models.collectibles.getObjectByName('Coin');
+                    if (coinOriginal) {
+                        itemModel = coinOriginal.clone();
+                        itemModel.scale.set(0.6, 0.6, 0.6);
+                        itemModel.position.set(x, y, z);
+
+                        // 메탈릭 재질 강화
+                        itemModel.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                child.material.metalness = 0.9;
+                                child.material.roughness = 0.2;
+                                child.material.color = new THREE.Color(0xFFD700);
+                            }
+                        });
+                    }
+                }
+
+                if (!itemModel) return;
+
+                this.game.scene.add(itemModel);
 
                 // 회전 애니메이션
-                mesh.userData.rotationSpeed = Math.random() * 0.02 + 0.02;
+                itemModel.userData.rotationSpeed = Math.random() * 0.03 + 0.03;
                 const animate = () => {
                     if (!this.game.state.playing) return;
-                    mesh.rotation.y += mesh.userData.rotationSpeed;
+                    itemModel.rotation.y += itemModel.userData.rotationSpeed;
+                    // 위아래로 떠다니는 효과
+                    itemModel.position.y = y + Math.sin(Date.now() * 0.002 + x) * 0.1;
                     requestAnimationFrame(animate);
                 };
                 animate();
 
-                this.game.items.push({ mesh: mesh, type: type });
+                this.game.items.push({ mesh: itemModel, type: type });
             }
 
             update() {
