@@ -17,6 +17,7 @@
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 
     <!-- Cannon.js (물리 엔진) -->
     <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
@@ -675,6 +676,12 @@
 
             async loadModels() {
                 const loader = new THREE.GLTFLoader();
+
+                // DRACOLoader 설정
+                const dracoLoader = new THREE.DRACOLoader();
+                dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+                loader.setDRACOLoader(dracoLoader);
+
                 console.log('📦 3D 모델 로딩 중...');
 
                 try {
@@ -740,6 +747,11 @@
                 // 지형 생성기 초기화
                 this.terrainGenerator = new TerrainGenerator(this);
                 this.terrainGenerator.init();
+
+                // 구슬 위치 초기화 (지형 위에 안착)
+                this.ballBody.position.set(0, 0.5, 0);
+                this.ballBody.velocity.set(0, 0, 0);
+                this.ballBody.angularVelocity.set(0, 0, 0);
 
                 // 게임 루프 시작
                 this.gameLoop();
@@ -1060,13 +1072,13 @@
                 this.game = game;
                 this.chunkSize = 10;
                 this.chunks = [];
-                this.lastChunkZ = -20;
+                this.lastChunkZ = 5;  // 구슬 앞쪽부터 시작
                 this.obstacleTypes = ['rock', 'tree'];
                 this.itemTypes = ['star', 'coin'];
             }
 
             init() {
-                // 초기 지형 생성
+                // 초기 지형 생성 (구슬 주변)
                 for (let i = 0; i < 5; i++) {
                     this.generateChunk(this.lastChunkZ);
                     this.lastChunkZ -= this.chunkSize;
@@ -1082,7 +1094,7 @@
                 });
 
                 const tile = new THREE.Mesh(geometry, material);
-                tile.position.set(0, -1, zPosition);
+                tile.position.set(0, 0, zPosition);  // y=0으로 변경
                 tile.receiveShadow = true;
                 this.game.scene.add(tile);
 
@@ -1091,7 +1103,7 @@
                 const body = new CANNON.Body({
                     mass: 0,
                     shape: shape,
-                    position: new CANNON.Vec3(0, -1, zPosition)
+                    position: new CANNON.Vec3(0, 0, zPosition)  // y=0으로 변경
                 });
                 this.game.world.addBody(body);
 
@@ -1165,7 +1177,7 @@
                 const mesh = new THREE.Mesh(geometry, material);
                 const x = (Math.random() - 0.5) * 16;
                 const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
-                mesh.position.set(x, 0, z);
+                mesh.position.set(x, 1, z);  // y=1로 변경 (지형 위에 배치)
                 mesh.castShadow = true;
 
                 this.game.scene.add(mesh);
@@ -1175,7 +1187,7 @@
                 const body = new CANNON.Body({
                     mass: 0,
                     shape: shape,
-                    position: new CANNON.Vec3(x, 0, z)
+                    position: new CANNON.Vec3(x, 1, z)  // y=1로 변경
                 });
                 this.game.world.addBody(body);
 
@@ -1196,10 +1208,12 @@
 
                 if (type === 'star') {
                     geometry = new THREE.SphereGeometry(0.3, 8, 8);
-                    material = new THREE.MeshBasicMaterial({
+                    material = new THREE.MeshStandardMaterial({
                         color: 0xFFD700,
                         emissive: 0xFFD700,
-                        emissiveIntensity: 0.5
+                        emissiveIntensity: 0.5,
+                        metalness: 0.3,
+                        roughness: 0.4
                     });
                     color = 0xFFD700;
                 } else {
