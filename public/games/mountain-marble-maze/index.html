@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mountain Marble Maze - 3D 센서 게임</title>
+
+    <!-- Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <!-- QR Code -->
+    <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+    <!-- SessionSDK -->
+    <script src="/js/SessionSDK.js"></script>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <!-- Cannon.js (물리 엔진) -->
+    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', 'Malgun Gothic', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+            background: linear-gradient(180deg, #87CEEB 0%, #E0F6FF 50%, #90EE90 100%);
+        }
+
+        /* UI 오버레이 */
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .ui-overlay > * {
+            pointer-events: auto;
+        }
+
+        /* 상단 HUD */
+        .top-hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .hud-item {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            margin: 5px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .hud-time {
+            background: rgba(255, 100, 100, 0.9);
+        }
+
+        .hud-score {
+            background: rgba(255, 215, 0, 0.9);
+            color: #333;
+        }
+
+        .hud-distance {
+            background: rgba(76, 175, 80, 0.9);
+        }
+
+        /* 하단 아이템 상태 */
+        .bottom-hud {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 15px;
+        }
+
+        .item-count {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .item-count .icon {
+            margin-right: 5px;
+        }
+
+        /* 메뉴 화면 */
+        .menu-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .menu-screen.hidden {
+            display: none;
+        }
+
+        .menu-title {
+            font-size: 64px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .menu-subtitle {
+            font-size: 24px;
+            color: #fff;
+            margin-bottom: 40px;
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        .start-btn {
+            padding: 20px 60px;
+            font-size: 28px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 30px;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(76, 175, 80, 0.5);
+        }
+
+        /* QR 코드 컨테이너 */
+        .qr-container {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+            display: none;
+        }
+
+        .qr-container.show {
+            display: block;
+        }
+
+        .qr-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .session-code {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 15px;
+            letter-spacing: 5px;
+        }
+
+        /* 결과 화면 */
+        .result-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .result-screen.show {
+            display: flex;
+        }
+
+        .result-title {
+            font-size: 64px;
+            font-weight: bold;
+            color: #FF6B6B;
+            margin-bottom: 20px;
+        }
+
+        .survival-time {
+            font-size: 48px;
+            color: #4ECDC4;
+            margin-bottom: 30px;
+        }
+
+        .final-score {
+            font-size: 56px;
+            color: #FFD700;
+            margin-bottom: 20px;
+        }
+
+        .score-breakdown {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            color: #fff;
+            font-size: 20px;
+            margin: 10px 0;
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .ranking-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .ranking-title {
+            font-size: 32px;
+            color: #FFD700;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .ranking-list {
+            color: #fff;
+        }
+
+        .ranking-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 18px;
+        }
+
+        .ranking-item.me {
+            background: rgba(76, 175, 80, 0.3);
+            border: 2px solid #4CAF50;
+        }
+
+        .rank-number {
+            font-weight: bold;
+            color: #FFD700;
+            min-width: 40px;
+        }
+
+        .restart-btn {
+            padding: 20px 60px;
+            font-size: 28px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(76, 175, 80, 0.5);
+        }
+
+        /* 피드백 텍스트 */
+        .feedback-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+            animation: fadeOut 1s;
+            pointer-events: none;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        /* 카운트다운 */
+        .countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 120px;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 5px 5px 10px rgba(0,0,0,0.5);
+            z-index: 500;
+            animation: pulse 0.5s;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(0); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <!-- 메뉴 화면 -->
+    <div class="menu-screen" id="menuScreen">
+        <div class="menu-title">🏔️ Mountain Marble Maze</div>
+        <div class="menu-subtitle">
+            기울여서 조작하는 3D 무한 생존 게임!<br>
+            장애물을 피하고 아이템을 수집하세요
+        </div>
+
+        <button class="start-btn" onclick="game.init()">🎮 게임 시작</button>
+
+        <div class="qr-container" id="qrContainer">
+            <div class="qr-title">📱 핸드폰으로 QR 코드를 스캔하세요</div>
+            <div class="session-code" id="sessionCode">------</div>
+            <div id="qrCode"></div>
+            <div style="margin-top: 20px; color: #666;">
+                센서가 연결되면 자동으로 게임이 시작됩니다
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 캔버스 -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI 오버레이 -->
+    <div class="ui-overlay">
+        <div class="top-hud">
+            <div class="hud-item hud-time">⏱️ <span id="timeText">0.0</span>초</div>
+            <div class="hud-item hud-score">🏆 <span id="scoreText">0</span>점</div>
+            <div class="hud-item hud-distance">📏 <span id="distanceText">0</span>m</div>
+        </div>
+
+        <div class="bottom-hud">
+            <div class="item-count">
+                <span class="icon">⭐</span>
+                <span id="starsText">0</span>
+            </div>
+            <div class="item-count">
+                <span class="icon">💰</span>
+                <span id="coinsText">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div class="result-screen" id="resultScreen">
+        <div class="result-title">Game Over!</div>
+        <div class="survival-time">생존 시간: <span id="finalTime">0</span>초</div>
+        <div class="final-score">최종 점수: <span id="finalScore">0</span>점</div>
+
+        <div class="score-breakdown">
+            <div class="score-item">
+                <span>생존 시간</span>
+                <span id="timeBonus">0점</span>
+            </div>
+            <div class="score-item">
+                <span>이동 거리</span>
+                <span id="distanceBonus">0점</span>
+            </div>
+            <div class="score-item">
+                <span>⭐ 별 수집</span>
+                <span id="starBonus">0점</span>
+            </div>
+            <div class="score-item">
+                <span>💰 코인 수집</span>
+                <span id="coinBonus">0점</span>
+            </div>
+        </div>
+
+        <div class="ranking-section">
+            <div class="ranking-title">🏆 Top 10 Ranking</div>
+            <div class="ranking-list" id="rankingList"></div>
+        </div>
+
+        <button class="restart-btn" onclick="game.restart()">🔄 다시 하기</button>
+    </div>
+
+    <script>
+        // ===== 메인 게임 클래스 =====
+        class MountainMarbleMaze {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                // SDK 초기화
+                this.sdk = new SessionSDK({
+                    gameId: 'mountain-marble-maze',
+                    gameType: 'solo',
+                    debug: true
+                });
+
+                // 게임 상태
+                this.state = {
+                    connected: false,
+                    playing: false,
+                    paused: false,
+                    survivalTime: 0,
+                    score: 0,
+                    distance: 0,
+                    starsCollected: 0,
+                    coinsCollected: 0,
+                    speed: 5,  // 진행 속도
+                    startTime: 0
+                };
+
+                // 3D 시스템
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.clock = new THREE.Clock();
+
+                // 물리 시스템
+                this.world = null;
+                this.ballBody = null;
+                this.ballMesh = null;
+
+                // 지형 시스템
+                this.terrainGenerator = null;
+                this.chunks = [];
+                this.obstacles = [];
+                this.items = [];
+
+                // 3D 모델
+                this.models = {
+                    marble: null,
+                    terrainTiles: null,
+                    obstacles: null,
+                    collectibles: null
+                };
+
+                // 센서 데이터
+                this.sensorData = null;
+                this.forceMultiplier = 30;
+
+                // 리사이즈 핸들러
+                window.addEventListener('resize', () => this.onResize());
+            }
+
+            async init() {
+                console.log('🎮 게임 초기화 시작...');
+
+                // SDK 이벤트 설정
+                this.setupSDK();
+
+                // 3D 초기화
+                this.init3D();
+
+                // 물리 초기화
+                this.initPhysics();
+
+                // 3D 모델 로딩
+                await this.loadModels();
+
+                // QR 컨테이너 표시
+                document.getElementById('qrContainer').classList.add('show');
+
+                // 세션 생성
+                await this.sdk.createSession();
+            }
+
+            setupSDK() {
+                // 서버 연결
+                this.sdk.on('connected', () => {
+                    console.log('✅ 서버 연결 완료');
+                    this.state.connected = true;
+                });
+
+                // 세션 생성
+                this.sdk.on('session-created', (event) => {
+                    const session = event.detail || event;
+                    console.log('✅ 세션 생성:', session.sessionCode);
+
+                    document.getElementById('sessionCode').textContent = session.sessionCode;
+
+                    // QR 코드 생성
+                    const sensorUrl = `${window.location.origin}/sensor.html?session=${session.sessionCode}`;
+                    QRCodeGenerator.generateElement(sensorUrl, 200)
+                        .then(qrElement => {
+                            const container = document.getElementById('qrCode');
+                            container.innerHTML = '';
+                            container.appendChild(qrElement);
+                        })
+                        .catch(err => {
+                            console.error('QR 코드 생성 실패:', err);
+                        });
+                });
+
+                // 센서 연결
+                this.sdk.on('sensor-connected', (event) => {
+                    console.log('📱 센서 연결됨');
+                    setTimeout(() => this.startGame(), 1000);
+                });
+
+                // 센서 데이터 수신
+                this.sdk.on('sensor-data', (event) => {
+                    const data = event.detail || event;
+                    this.processSensorData(data);
+                });
+            }
+
+            processSensorData(sensorData) {
+                if (!sensorData || !sensorData.data || !this.state.playing) return;
+
+                this.sensorData = sensorData.data;
+
+                // 기울기 → 물리력 변환
+                if (this.sensorData.orientation && this.ballBody) {
+                    const gamma = this.sensorData.orientation.gamma || 0;  // 좌우
+                    const beta = this.sensorData.orientation.beta || 0;    // 전후
+
+                    // 각도 → 힘 (삼각함수)
+                    const forceX = Math.sin(gamma * Math.PI / 180) * this.forceMultiplier;
+                    const forceZ = Math.sin(beta * Math.PI / 180) * this.forceMultiplier;
+
+                    // 물리 엔진에 힘 적용
+                    const force = new CANNON.Vec3(forceX, 0, forceZ);
+                    const worldPoint = new CANNON.Vec3(
+                        this.ballBody.position.x,
+                        this.ballBody.position.y,
+                        this.ballBody.position.z
+                    );
+                    this.ballBody.applyForce(force, worldPoint);
+                }
+            }
+
+            // ===== 3D 시스템 =====
+
+            init3D() {
+                // Scene
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x87CEEB);
+                this.scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+
+                // Camera (3인칭 추적)
+                this.camera = new THREE.PerspectiveCamera(
+                    75,
+                    window.innerWidth / window.innerHeight,
+                    0.1,
+                    1000
+                );
+                this.camera.position.set(0, 5, 10);
+                this.camera.lookAt(0, 0, 0);
+
+                // Renderer
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas,
+                    antialias: true
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+                // 조명
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                this.scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 10);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = 100;
+                directionalLight.shadow.camera.left = -50;
+                directionalLight.shadow.camera.right = 50;
+                directionalLight.shadow.camera.top = 50;
+                directionalLight.shadow.camera.bottom = -50;
+                this.scene.add(directionalLight);
+
+                const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x90EE90, 0.6);
+                this.scene.add(hemisphereLight);
+
+                console.log('✅ 3D 엔진 초기화 완료');
+            }
+
+            initPhysics() {
+                // Cannon.js 월드
+                this.world = new CANNON.World();
+                this.world.gravity.set(0, -9.82, 0);
+                this.world.broadphase = new CANNON.NaiveBroadphase();
+                this.world.solver.iterations = 10;
+
+                // 재질
+                const ballMaterial = new CANNON.Material('ball');
+                const groundMaterial = new CANNON.Material('ground');
+
+                const contactMaterial = new CANNON.ContactMaterial(
+                    ballMaterial,
+                    groundMaterial,
+                    {
+                        friction: 0.3,
+                        restitution: 0.6
+                    }
+                );
+                this.world.addContactMaterial(contactMaterial);
+
+                // 구슬 물리 바디
+                const ballShape = new CANNON.Sphere(0.5);
+                this.ballBody = new CANNON.Body({
+                    mass: 1,
+                    shape: ballShape,
+                    material: ballMaterial,
+                    position: new CANNON.Vec3(0, 2, 0),
+                    linearDamping: 0.3,
+                    angularDamping: 0.3
+                });
+                this.world.addBody(this.ballBody);
+
+                console.log('✅ 물리 엔진 초기화 완료');
+            }
+
+            async loadModels() {
+                const loader = new THREE.GLTFLoader();
+                console.log('📦 3D 모델 로딩 중...');
+
+                try {
+                    // 구슬
+                    const marble = await this.loadModel(loader, 'assets/models/marble-ball.glb');
+                    marble.scale.set(1, 1, 1);
+                    marble.castShadow = true;
+                    marble.receiveShadow = true;
+                    this.scene.add(marble);
+                    this.ballMesh = marble;
+                    this.models.marble = marble;
+
+                    // 지형 타일 (나중에 사용)
+                    this.models.terrainTiles = await this.loadModel(loader, 'assets/models/terrain-tiles.glb');
+                    this.models.terrainTiles.visible = false;
+
+                    // 장애물
+                    this.models.obstacles = await this.loadModel(loader, 'assets/models/obstacles.glb');
+                    this.models.obstacles.visible = false;
+
+                    // 아이템
+                    this.models.collectibles = await this.loadModel(loader, 'assets/models/collectibles.glb');
+                    this.models.collectibles.visible = false;
+
+                    console.log('✅ 3D 모델 로딩 완료');
+                } catch (error) {
+                    console.error('❌ 3D 모델 로딩 실패:', error);
+                }
+            }
+
+            loadModel(loader, url) {
+                return new Promise((resolve, reject) => {
+                    loader.load(
+                        url,
+                        (gltf) => resolve(gltf.scene),
+                        undefined,
+                        (error) => reject(error)
+                    );
+                });
+            }
+
+            // ===== 게임 플로우 =====
+
+            async startGame() {
+                console.log('🎮 게임 시작!');
+
+                // 메뉴 숨기기
+                document.getElementById('menuScreen').classList.add('hidden');
+
+                // 카운트다운
+                await this.countdown();
+
+                // 게임 상태 초기화
+                this.state.playing = true;
+                this.state.survivalTime = 0;
+                this.state.score = 0;
+                this.state.distance = 0;
+                this.state.starsCollected = 0;
+                this.state.coinsCollected = 0;
+                this.state.speed = 5;
+                this.state.startTime = Date.now();
+
+                // 지형 생성기 초기화
+                this.terrainGenerator = new TerrainGenerator(this);
+                this.terrainGenerator.init();
+
+                // 게임 루프 시작
+                this.gameLoop();
+            }
+
+            async countdown() {
+                const counts = ['3', '2', '1', 'GO!'];
+                for (const count of counts) {
+                    const countdownEl = document.createElement('div');
+                    countdownEl.className = 'countdown';
+                    countdownEl.textContent = count;
+                    document.body.appendChild(countdownEl);
+
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    countdownEl.remove();
+                }
+            }
+
+            gameLoop() {
+                if (!this.state.playing) return;
+
+                requestAnimationFrame(() => this.gameLoop());
+
+                const deltaTime = this.clock.getDelta();
+
+                // 물리 업데이트
+                this.world.step(1 / 60, deltaTime, 3);
+
+                // 구슬 메시 동기화
+                if (this.ballMesh && this.ballBody) {
+                    this.ballMesh.position.copy(this.ballBody.position);
+                    this.ballMesh.quaternion.copy(this.ballBody.quaternion);
+                }
+
+                // 카메라 추적 (부드러운 이동)
+                if (this.ballBody) {
+                    const targetX = this.ballBody.position.x;
+                    const targetY = this.ballBody.position.y + 5;
+                    const targetZ = this.ballBody.position.z + 10;
+
+                    this.camera.position.x += (targetX - this.camera.position.x) * 0.1;
+                    this.camera.position.y += (targetY - this.camera.position.y) * 0.1;
+                    this.camera.position.z += (targetZ - this.camera.position.z) * 0.1;
+
+                    this.camera.lookAt(this.ballBody.position.x, this.ballBody.position.y, this.ballBody.position.z);
+                }
+
+                // 지형 업데이트
+                if (this.terrainGenerator) {
+                    this.terrainGenerator.update();
+                }
+
+                // 충돌 검사
+                this.checkCollisions();
+
+                // 게임 오버 체크
+                this.checkGameOver();
+
+                // 생존 시간 업데이트
+                this.state.survivalTime = (Date.now() - this.state.startTime) / 1000;
+
+                // 거리 업데이트
+                if (this.ballBody) {
+                    this.state.distance = Math.max(this.state.distance, Math.abs(this.ballBody.position.z));
+                }
+
+                // 난이도 증가 (30초마다 속도 증가)
+                const difficultyLevel = Math.floor(this.state.survivalTime / 30);
+                this.state.speed = 5 + difficultyLevel * 0.5;
+
+                // UI 업데이트
+                this.updateUI();
+
+                // 렌더링
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            checkCollisions() {
+                // 장애물 충돌
+                this.obstacles.forEach((obstacle, index) => {
+                    if (!obstacle.body || !this.ballBody) return;
+
+                    const distance = this.ballBody.position.distanceTo(obstacle.body.position);
+                    if (distance < 1.5) {
+                        this.gameOver('장애물 충돌!');
+                    }
+                });
+
+                // 아이템 수집
+                this.items.forEach((item, index) => {
+                    if (!item.mesh || !this.ballBody) return;
+
+                    const distance = this.ballBody.position.distanceTo(item.mesh.position);
+                    if (distance < 1.0) {
+                        this.collectItem(item, index);
+                    }
+                });
+            }
+
+            collectItem(item, index) {
+                const type = item.type;
+
+                if (type === 'star') {
+                    this.state.starsCollected++;
+                    this.state.score += 100;
+                    this.showFeedback('+100 ⭐', '#FFD700');
+                } else if (type === 'coin') {
+                    this.state.coinsCollected++;
+                    this.state.score += 50;
+                    this.showFeedback('+50 💰', '#FFC700');
+                }
+
+                // 아이템 제거
+                this.scene.remove(item.mesh);
+                this.items.splice(index, 1);
+
+                // 파티클 효과 (간단한 구현)
+                this.createParticles(item.mesh.position, type === 'star' ? 0xFFD700 : 0xFFC700);
+            }
+
+            createParticles(position, color) {
+                const particleCount = 10;
+                const geometry = new THREE.SphereGeometry(0.05, 4, 4);
+                const material = new THREE.MeshBasicMaterial({ color: color });
+
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = new THREE.Mesh(geometry, material);
+                    particle.position.copy(position);
+                    this.scene.add(particle);
+
+                    // 랜덤 방향으로 날리기
+                    const vx = (Math.random() - 0.5) * 2;
+                    const vy = Math.random() * 2;
+                    const vz = (Math.random() - 0.5) * 2;
+
+                    let life = 0;
+                    const animate = () => {
+                        life += 0.02;
+                        if (life > 1) {
+                            this.scene.remove(particle);
+                            return;
+                        }
+
+                        particle.position.x += vx * 0.05;
+                        particle.position.y += vy * 0.05 - life * 0.1;  // 중력
+                        particle.position.z += vz * 0.05;
+                        particle.material.opacity = 1 - life;
+                        particle.material.transparent = true;
+
+                        requestAnimationFrame(animate);
+                    };
+                    animate();
+                }
+            }
+
+            checkGameOver() {
+                if (!this.ballBody) return;
+
+                // 낙하 감지
+                if (this.ballBody.position.y < -10) {
+                    this.gameOver('맵 이탈!');
+                }
+            }
+
+            gameOver(reason) {
+                if (!this.state.playing) return;
+
+                console.log('💀 게임 오버:', reason);
+                this.state.playing = false;
+
+                // 점수 계산
+                const finalScore = this.calculateScore();
+
+                // 랭킹 저장
+                this.saveRanking(finalScore);
+
+                // 결과 화면 표시
+                this.showResults(finalScore);
+            }
+
+            calculateScore() {
+                const timeBonus = Math.floor(this.state.survivalTime * 10);
+                const distanceBonus = Math.floor(this.state.distance);
+                const starBonus = this.state.starsCollected * 100;
+                const coinBonus = this.state.coinsCollected * 50;
+
+                const totalScore = timeBonus + distanceBonus + starBonus + coinBonus;
+
+                return {
+                    totalScore,
+                    timeBonus,
+                    distanceBonus,
+                    starBonus,
+                    coinBonus,
+                    survivalTime: this.state.survivalTime.toFixed(1),
+                    stars: this.state.starsCollected,
+                    coins: this.state.coinsCollected,
+                    distance: this.state.distance.toFixed(1)
+                };
+            }
+
+            saveRanking(scoreData) {
+                const ranking = {
+                    score: scoreData.totalScore,
+                    time: scoreData.survivalTime,
+                    stars: scoreData.stars,
+                    coins: scoreData.coins,
+                    distance: scoreData.distance,
+                    timestamp: Date.now()
+                };
+
+                // LocalStorage에 저장
+                let rankings = JSON.parse(localStorage.getItem('mmm-rankings') || '[]');
+                rankings.push(ranking);
+                rankings.sort((a, b) => b.score - a.score);
+                rankings = rankings.slice(0, 10);  // Top 10만 유지
+                localStorage.setItem('mmm-rankings', JSON.stringify(rankings));
+
+                this.currentRankings = rankings;
+            }
+
+            showResults(scoreData) {
+                document.getElementById('finalTime').textContent = scoreData.survivalTime;
+                document.getElementById('finalScore').textContent = scoreData.totalScore;
+                document.getElementById('timeBonus').textContent = scoreData.timeBonus + '점';
+                document.getElementById('distanceBonus').textContent = scoreData.distanceBonus + '점';
+                document.getElementById('starBonus').textContent = scoreData.starBonus + '점';
+                document.getElementById('coinBonus').textContent = scoreData.coinBonus + '점';
+
+                // 랭킹 표시
+                const rankingList = document.getElementById('rankingList');
+                rankingList.innerHTML = '';
+
+                this.currentRankings.forEach((rank, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'ranking-item';
+                    if (rank.timestamp === scoreData.timestamp) {
+                        item.classList.add('me');
+                    }
+
+                    item.innerHTML = `
+                        <span class="rank-number">#${index + 1}</span>
+                        <span>${rank.score}점</span>
+                        <span>${rank.time}초</span>
+                        <span>⭐${rank.stars} 💰${rank.coins}</span>
+                    `;
+                    rankingList.appendChild(item);
+                });
+
+                document.getElementById('resultScreen').classList.add('show');
+            }
+
+            showFeedback(text, color) {
+                const feedback = document.createElement('div');
+                feedback.className = 'feedback-text';
+                feedback.textContent = text;
+                feedback.style.color = color;
+                document.body.appendChild(feedback);
+
+                setTimeout(() => feedback.remove(), 1000);
+            }
+
+            updateUI() {
+                document.getElementById('timeText').textContent = this.state.survivalTime.toFixed(1);
+                document.getElementById('scoreText').textContent = this.state.score;
+                document.getElementById('distanceText').textContent = Math.floor(this.state.distance);
+                document.getElementById('starsText').textContent = this.state.starsCollected;
+                document.getElementById('coinsText').textContent = this.state.coinsCollected;
+            }
+
+            restart() {
+                // 상태 초기화
+                this.state.playing = false;
+                this.state.survivalTime = 0;
+                this.state.score = 0;
+                this.state.distance = 0;
+                this.state.starsCollected = 0;
+                this.state.coinsCollected = 0;
+
+                // 구슬 위치 초기화
+                if (this.ballBody) {
+                    this.ballBody.position.set(0, 2, 0);
+                    this.ballBody.velocity.set(0, 0, 0);
+                    this.ballBody.angularVelocity.set(0, 0, 0);
+                }
+
+                // 지형 초기화
+                if (this.terrainGenerator) {
+                    this.terrainGenerator.clear();
+                }
+
+                // UI 초기화
+                document.getElementById('resultScreen').classList.remove('show');
+                document.getElementById('menuScreen').classList.remove('hidden');
+                document.getElementById('qrContainer').classList.remove('show');
+
+                this.updateUI();
+            }
+
+            onResize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+
+                if (this.camera) {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                }
+
+                if (this.renderer) {
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                }
+            }
+        }
+
+        // ===== 지형 생성기 =====
+        class TerrainGenerator {
+            constructor(game) {
+                this.game = game;
+                this.chunkSize = 10;
+                this.chunks = [];
+                this.lastChunkZ = -20;
+                this.obstacleTypes = ['rock', 'tree'];
+                this.itemTypes = ['star', 'coin'];
+            }
+
+            init() {
+                // 초기 지형 생성
+                for (let i = 0; i < 5; i++) {
+                    this.generateChunk(this.lastChunkZ);
+                    this.lastChunkZ -= this.chunkSize;
+                }
+            }
+
+            generateChunk(zPosition) {
+                // 평지 타일 생성 (간단한 구현)
+                const geometry = new THREE.BoxGeometry(20, 0.2, this.chunkSize);
+                const material = new THREE.MeshStandardMaterial({
+                    color: 0x44CC44,
+                    roughness: 0.8
+                });
+
+                const tile = new THREE.Mesh(geometry, material);
+                tile.position.set(0, -1, zPosition);
+                tile.receiveShadow = true;
+                this.game.scene.add(tile);
+
+                // 물리 바디
+                const shape = new CANNON.Box(new CANNON.Vec3(10, 0.1, this.chunkSize / 2));
+                const body = new CANNON.Body({
+                    mass: 0,
+                    shape: shape,
+                    position: new CANNON.Vec3(0, -1, zPosition)
+                });
+                this.game.world.addBody(body);
+
+                const chunk = { mesh: tile, body: body, z: zPosition };
+                this.chunks.push(chunk);
+
+                // 장애물 배치
+                this.placeObstacles(zPosition);
+
+                // 아이템 배치
+                this.placeItems(zPosition);
+            }
+
+            placeObstacles(zPosition) {
+                const difficulty = Math.floor(this.game.state.survivalTime / 30);
+                const obstacleCount = 2 + difficulty;
+
+                for (let i = 0; i < obstacleCount; i++) {
+                    if (Math.random() > 0.5) {  // 50% 확률
+                        const type = this.obstacleTypes[Math.floor(Math.random() * this.obstacleTypes.length)];
+                        this.createObstacle(type, zPosition);
+                    }
+                }
+            }
+
+            createObstacle(type, zPosition) {
+                let geometry, material;
+
+                if (type === 'rock') {
+                    geometry = new THREE.DodecahedronGeometry(1, 0);
+                    material = new THREE.MeshStandardMaterial({ color: 0x888888 });
+                } else if (type === 'tree') {
+                    // 간단한 나무 (원기둥 + 구)
+                    const group = new THREE.Group();
+
+                    const trunk = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.3, 0.3, 3, 8),
+                        new THREE.MeshStandardMaterial({ color: 0x8B4513 })
+                    );
+                    trunk.position.y = 1.5;
+
+                    const leaves = new THREE.Mesh(
+                        new THREE.SphereGeometry(1, 8, 8),
+                        new THREE.MeshStandardMaterial({ color: 0x55DD55 })
+                    );
+                    leaves.position.y = 3;
+
+                    group.add(trunk);
+                    group.add(leaves);
+
+                    const x = (Math.random() - 0.5) * 16;
+                    const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
+                    group.position.set(x, 0, z);
+                    group.castShadow = true;
+
+                    this.game.scene.add(group);
+
+                    // 물리 바디
+                    const shape = new CANNON.Cylinder(0.3, 0.3, 3, 8);
+                    const body = new CANNON.Body({
+                        mass: 0,
+                        shape: shape,
+                        position: new CANNON.Vec3(x, 1.5, z)
+                    });
+                    this.game.world.addBody(body);
+
+                    this.game.obstacles.push({ mesh: group, body: body, type: 'tree' });
+                    return;
+                }
+
+                const mesh = new THREE.Mesh(geometry, material);
+                const x = (Math.random() - 0.5) * 16;
+                const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
+                mesh.position.set(x, 0, z);
+                mesh.castShadow = true;
+
+                this.game.scene.add(mesh);
+
+                // 물리 바디
+                const shape = new CANNON.Sphere(1);
+                const body = new CANNON.Body({
+                    mass: 0,
+                    shape: shape,
+                    position: new CANNON.Vec3(x, 0, z)
+                });
+                this.game.world.addBody(body);
+
+                this.game.obstacles.push({ mesh: mesh, body: body, type: 'rock' });
+            }
+
+            placeItems(zPosition) {
+                const itemCount = 5;
+
+                for (let i = 0; i < itemCount; i++) {
+                    const type = Math.random() > 0.5 ? 'star' : 'coin';
+                    this.createItem(type, zPosition);
+                }
+            }
+
+            createItem(type, zPosition) {
+                let geometry, material, color;
+
+                if (type === 'star') {
+                    geometry = new THREE.SphereGeometry(0.3, 8, 8);
+                    material = new THREE.MeshBasicMaterial({
+                        color: 0xFFD700,
+                        emissive: 0xFFD700,
+                        emissiveIntensity: 0.5
+                    });
+                    color = 0xFFD700;
+                } else {
+                    geometry = new THREE.CylinderGeometry(0.25, 0.25, 0.1, 20);
+                    material = new THREE.MeshStandardMaterial({
+                        color: 0xFFC700,
+                        metalness: 0.8,
+                        roughness: 0.3
+                    });
+                    color = 0xFFC700;
+                }
+
+                const mesh = new THREE.Mesh(geometry, material);
+                const x = (Math.random() - 0.5) * 16;
+                const y = 0.5;
+                const z = zPosition + (Math.random() - 0.5) * this.chunkSize;
+                mesh.position.set(x, y, z);
+
+                this.game.scene.add(mesh);
+
+                // 회전 애니메이션
+                mesh.userData.rotationSpeed = Math.random() * 0.02 + 0.02;
+                const animate = () => {
+                    if (!this.game.state.playing) return;
+                    mesh.rotation.y += mesh.userData.rotationSpeed;
+                    requestAnimationFrame(animate);
+                };
+                animate();
+
+                this.game.items.push({ mesh: mesh, type: type });
+            }
+
+            update() {
+                if (!this.game.ballBody) return;
+
+                const ballZ = this.game.ballBody.position.z;
+
+                // 새 청크 생성 (구슬 앞에)
+                if (ballZ - 30 < this.lastChunkZ) {
+                    this.generateChunk(this.lastChunkZ);
+                    this.lastChunkZ -= this.chunkSize;
+                }
+
+                // 오래된 청크 제거
+                this.chunks = this.chunks.filter(chunk => {
+                    if (chunk.z > ballZ + 20) {
+                        this.game.scene.remove(chunk.mesh);
+                        this.game.world.removeBody(chunk.body);
+                        return false;
+                    }
+                    return true;
+                });
+
+                // 오래된 장애물 제거
+                this.game.obstacles = this.game.obstacles.filter(obstacle => {
+                    if (obstacle.body.position.z > ballZ + 20) {
+                        this.game.scene.remove(obstacle.mesh);
+                        this.game.world.removeBody(obstacle.body);
+                        return false;
+                    }
+                    return true;
+                });
+
+                // 오래된 아이템 제거
+                this.game.items = this.game.items.filter(item => {
+                    if (item.mesh.position.z > ballZ + 20) {
+                        this.game.scene.remove(item.mesh);
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            clear() {
+                // 모든 청크 제거
+                this.chunks.forEach(chunk => {
+                    this.game.scene.remove(chunk.mesh);
+                    this.game.world.removeBody(chunk.body);
+                });
+                this.chunks = [];
+
+                // 모든 장애물 제거
+                this.game.obstacles.forEach(obstacle => {
+                    this.game.scene.remove(obstacle.mesh);
+                    this.game.world.removeBody(obstacle.body);
+                });
+                this.game.obstacles = [];
+
+                // 모든 아이템 제거
+                this.game.items.forEach(item => {
+                    this.game.scene.remove(item.mesh);
+                });
+                this.game.items = [];
+
+                this.lastChunkZ = -20;
+            }
+        }
+
+        // 게임 인스턴스 생성
+        const game = new MountainMarbleMaze();
+
+        console.log('🏔️ Mountain Marble Maze 로드 완료!');
+    </script>
+</body>
+</html>

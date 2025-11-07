@@ -1,0 +1,46 @@
+{
+  "id": "mountain-marble-maze",
+  "title": "Mountain Marble Maze",
+  "description": "산악 지형에서 구슬을 굴려 장애물을 피하고 아이템을 수집하세요! 기울기 센서로 조작하는 무한 생존 게임입니다.",
+  "category": "solo",
+  "icon": "🏔️",
+  "version": "1.0.0",
+  "sensors": ["motion", "orientation"],
+  "maxPlayers": 1,
+  "difficulty": "medium",
+  "status": "active",
+  "featured": true,
+  "tags": ["3D", "endless", "physics", "arcade", "survival"],
+  "instructions": [
+    "QR 코드를 스캔하여 핸드폰을 센서로 연결하세요",
+    "핸드폰을 기울여 구슬을 조작합니다",
+    "장애물(바위, 나무)에 부딪히면 게임 오버!",
+    "맵 밖으로 떨어지면 게임 오버!",
+    "별(⭐)과 코인(💰)을 최대한 많이 수집하세요",
+    "시간이 지날수록 난이도가 증가합니다",
+    "생존 시간과 수집 아이템으로 최고 점수에 도전!"
+  ],
+  "controls": {
+    "tilt": "핸드폰 기울이기 → 구슬 굴리기",
+    "left": "왼쪽 기울기 → 구슬 왼쪽 이동",
+    "right": "오른쪽 기울기 → 구슬 오른쪽 이동",
+    "forward": "앞으로 기울기 → 구슬 앞으로 이동",
+    "backward": "뒤로 기울기 → 구슬 뒤로 이동"
+  },
+  "features": [
+    "실시간 3D 렌더링 (Three.js)",
+    "물리 기반 구슬 굴리기 (Cannon.js)",
+    "무한 생성 지형 (Endless Runner)",
+    "점진적 난이도 증가",
+    "랭킹 시스템 (Top 10)",
+    "만화 스타일 그래픽",
+    "3인칭 추적 카메라",
+    "파티클 효과"
+  ],
+  "scoring": {
+    "survivalTime": "생존 시간 × 10점",
+    "distance": "이동 거리 = 점수",
+    "star": "별 수집 = 100점",
+    "coin": "코인 수집 = 50점"
+  }
+}
