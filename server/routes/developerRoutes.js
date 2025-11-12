@@ -595,6 +595,72 @@ class DeveloperRoutes {
             cursor: not-allowed;
         }
 
+        /* 🎛️ 응답 모드 토글 스위치 */
+        .response-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #EF4444, #DC2626);
+            transition: 0.3s;
+            border-radius: 30px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "⚡";
+            height: 24px;
+            width: 24px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        input:checked + .toggle-slider {
+            background: linear-gradient(135deg, #6366F1, #A855F7);
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+            content: "📚";
+        }
+
+        .toggle-label {
+            color: #E2E8F0;
+            font-weight: 600;
+            font-size: 0.875rem;
+            user-select: none;
+            min-width: 100px;
+        }
+
         .generator-container {
             max-width: 1400px;
             margin: 0 auto;
@@ -1464,6 +1530,26 @@ class DeveloperRoutes {
         // 💬 챗봇 세션 ID 관리
         let chatSessionId = localStorage.getItem('chatSessionId') || null;
 
+        // 🎛️ 응답 모드 토글 관리
+        let currentResponseMode = 'detailed'; // 기본값: 자세한 답변
+
+        const responseModeCheckbox = document.getElementById('response-mode-checkbox');
+        const responseModeLabel = document.getElementById('response-mode-label');
+
+        if (responseModeCheckbox) {
+            responseModeCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    currentResponseMode = 'detailed';
+                    responseModeLabel.textContent = '📚 자세한 답변';
+                    console.log('✅ 응답 모드: 자세한 답변 (max_tokens: 4096)');
+                } else {
+                    currentResponseMode = 'quick';
+                    responseModeLabel.textContent = '⚡ 빠른 답변';
+                    console.log('✅ 응답 모드: 빠른 답변 (max_tokens: 1024)');
+                }
+            });
+        }
+
         async function sendMessage() {
             const message = chatInput.value.trim();
             if (!message) return;
@@ -1482,7 +1568,8 @@ class DeveloperRoutes {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: message,
-                        sessionId: chatSessionId // ✨ 세션 ID 전송
+                        sessionId: chatSessionId, // ✨ 세션 ID 전송
+                        responseMode: currentResponseMode  // 🎛️ 응답 모드 전송
                     })
                 });
 
@@ -2171,11 +2258,23 @@ class DeveloperRoutes {
                     class="chat-input"
                     placeholder="센서 게임 개발에 대해 질문하세요... (Shift+Enter: 줄바꿈, Enter: 전송)"
                 ></textarea>
-                <div style="display: flex; gap: 0.75rem;">
-                    <button id="new-chat-btn" class="send-btn" style="flex: 0 0 auto; background: linear-gradient(135deg, #10B981, #059669); padding: 1rem 1.5rem;">
-                        🔄 새 대화
-                    </button>
-                    <button id="send-btn" class="send-btn" style="flex: 1;">전송</button>
+                <div style="display: flex; gap: 0.75rem; flex-direction: column;">
+                    <!-- 🎛️ 응답 모드 토글 스위치 -->
+                    <div class="response-mode-toggle">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="response-mode-checkbox" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label" id="response-mode-label">📚 자세한 답변</span>
+                    </div>
+
+                    <!-- 버튼 영역 -->
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="new-chat-btn" class="send-btn" style="flex: 0 0 auto; background: linear-gradient(135deg, #10B981, #059669); padding: 1rem 1.5rem;">
+                            🔄 새 대화
+                        </button>
+                        <button id="send-btn" class="send-btn" style="flex: 1;">전송</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2982,7 +3081,7 @@ class DeveloperRoutes {
      */
     async handleChat(req, res) {
         try {
-            const { message, sessionId: clientSessionId } = req.body;
+            const { message, sessionId: clientSessionId, responseMode } = req.body;
 
             // ✅ 세션 ID 생성 또는 재사용
             const sessionId = clientSessionId || `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -3017,7 +3116,10 @@ class DeveloperRoutes {
             session.lastAccess = Date.now();
 
             // 🤖 AI 서비스 호출 (전체 대화 히스토리 전달)
-            const result = await aiService.processChat(message, session.messages);
+            const result = await aiService.processChat(message, session.messages, {
+                responseMode: responseMode || 'detailed',
+                maxTokens: responseMode === 'quick' ? 1024 : 4096
+            });
 
             if (result.success) {
                 // 💾 AI 응답 저장

@@ -107,8 +107,8 @@ class AIAssistant {
     /**
      * 🎯 시스템 프롬프트 생성 (캐싱 적용)
      */
-    getSystemPrompt() {
-        return `당신은 Sensor Game Hub v6.0의 전문 게임 개발 도우미입니다.
+    getSystemPrompt(responseMode = 'detailed') {
+        const basePrompt = `당신은 Sensor Game Hub v6.0의 전문 게임 개발 도우미입니다.
 
 주요 역할:
 - 모바일 센서를 활용한 게임 개발 질문에 답변
@@ -131,7 +131,19 @@ class AIAssistant {
 게임 타입:
 - solo: 1명 플레이어, 단일 센서
 - dual: 2명 협력, 2개 센서
-- multi: 3-8명 경쟁, 여러 센서
+- multi: 3-8명 경쟁, 여러 센서`;
+
+        const modeSuffix = responseMode === 'quick'
+            ? `
+
+**답변 스타일: ⚡ 빠른 모드**
+- 핵심만 간결하게 (1-3문단)
+- 코드 예제는 최소한으로 (10줄 이내)
+- 불필요한 배경 설명 생략
+- 즉시 실행 가능한 해결책 우선
+
+제공된 컨텍스트를 참조하여 **간결하고 핵심적인** 답변을 제공하세요.`
+            : `
 
 답변 시 고려사항:
 - 구체적이고 실행 가능한 코드 예제 제공
@@ -139,7 +151,16 @@ class AIAssistant {
 - 단계별 구현 가이드 제공
 - 기존 예제 게임들(solo, dual, multi) 참조
 
-제공된 컨텍스트를 참조하여 정확하고 도움이 되는 답변을 제공하세요.`;
+**답변 스타일: 📚 자세한 모드**
+- 상세한 배경 설명 제공
+- 완전한 코드 예제 (주석 포함)
+- 단계별 구현 가이드
+- 일반적인 실수와 해결책 포함
+- 관련 팁과 주의사항 추가
+
+제공된 컨텍스트를 참조하여 **정확하고 도움이 되는** 답변을 제공하세요.`;
+
+        return basePrompt + modeSuffix;
     }
 
     /**
@@ -149,7 +170,7 @@ class AIAssistant {
      * @param {Array} conversationHistory - 대화 히스토리 [{ role, content }]
      * @returns {Object} { success, message, usage, timestamp }
      */
-    async processChat(message, conversationHistory = []) {
+    async processChat(message, conversationHistory = [], options = {}) {
         try {
             console.log(`💬 챗봇 메시지 처리 중: "${message.substring(0, 50)}..."`);
 
@@ -165,10 +186,11 @@ class AIAssistant {
             const relevantDocs = await this.searchDocs(message);
 
             // 2️⃣ 시스템 프롬프트 구성 (캐싱 적용)
+            const responseMode = options.responseMode || 'detailed';
             const systemMessages = [
                 {
                     type: "text",
-                    text: this.getSystemPrompt(),
+                    text: this.getSystemPrompt(responseMode),
                     // ✨ 시스템 프롬프트 캐싱 (5분 TTL, 자동 갱신)
                     cache_control: { type: "ephemeral" }
                 },
@@ -211,9 +233,10 @@ class AIAssistant {
             });
 
             // 4️⃣ Claude API 호출 (캐싱 적용)
+            const maxTokens = options.maxTokens || this.config.maxTokens;
             const response = await this.anthropicClient.messages.create({
                 model: this.config.claudeModel,
-                max_tokens: this.config.maxTokens,
+                max_tokens: maxTokens,
                 temperature: this.config.temperature,
                 system: systemMessages, // ✅ 캐싱된 시스템 프롬프트
                 messages: messages
