@@ -2719,6 +2719,13 @@ class DeveloperRoutes {
                 const subtitleEl = document.getElementById('change-details-subtitle');
                 const contentEl = document.getElementById('change-details-content');
 
+                // Null 체크
+                if (!modal || !titleEl || !subtitleEl || !contentEl) {
+                    console.error('❌ 상세 피드백 모달 요소를 찾을 수 없습니다');
+                    alert('✅ ' + (data.message || '수정이 완료되었습니다!'));
+                    return;
+                }
+
                 // 타입에 따라 제목 및 아이콘 설정
                 if (type === 'bug') {
                     titleEl.textContent = '🐛 버그 수정 완료';
