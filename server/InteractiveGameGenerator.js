@@ -3223,6 +3223,7 @@ ${gameCode.substring(0, 8000)}
             // 🔍 게임 자동 검증 실행 (로컬 파일이 있을 때만)
             let validationResult = null;
             let validationReport = null;
+            let reportPath = null;  // ✅ 변수 초기화
 
             if (saveToLocal) {
                 console.log(`🔍 게임 검증 시작: ${gameId}`);
@@ -3233,7 +3234,7 @@ ${gameCode.substring(0, 8000)}
                 console.log(validationReport);
 
                 // 검증 결과를 파일로 저장
-                const reportPath = path.join(gamePath, 'VALIDATION_REPORT.md');
+                reportPath = path.join(gamePath, 'VALIDATION_REPORT.md');
                 await fs.writeFile(reportPath, validationReport, 'utf8');
                 console.log(`📋 검증 보고서 로컬 저장: ${reportPath}`);
             } else {
