@@ -2518,6 +2518,27 @@ class DeveloperRoutes {
             </div>
         </div>
 
+        <!-- ✨ 상세 피드백 모달 (NEW) -->
+        <div id="change-details-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 1001; align-items: center; justify-content: center;">
+            <div class="modal-content" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98)); border: 1px solid rgba(139, 92, 246, 0.6); border-radius: 16px; padding: 2rem; max-width: 650px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(139, 92, 246, 0.3); padding-bottom: 1rem;">
+                    <div>
+                        <h3 id="change-details-title" style="font-size: 1.5rem; font-weight: 600; color: #E2E8F0; margin-bottom: 0.25rem;">✅ 수정 완료</h3>
+                        <p id="change-details-subtitle" style="font-size: 0.875rem; color: #94A3B8; margin: 0;"></p>
+                    </div>
+                    <button class="modal-close" onclick="closeChangeDetailsModal()" style="background: none; border: none; font-size: 1.5rem; color: #94A3B8; cursor: pointer; transition: color 0.2s;">×</button>
+                </div>
+
+                <div id="change-details-content" style="color: #CBD5E1;">
+                    <!-- 동적 콘텐츠가 여기에 표시됩니다 -->
+                </div>
+
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(100, 116, 139, 0.3); display: flex; justify-content: flex-end;">
+                    <button onclick="closeChangeDetailsModal()" style="padding: 0.75rem 2rem; border-radius: 8px; background: linear-gradient(135deg, #8B5CF6, #7C3AED); color: white; border: none; font-weight: 500; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);">확인</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 게임 업로드 모달 -->
         <div id="upload-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center;">
             <div class="modal-content" style="background: rgba(30, 41, 59, 0.95); border: 1px solid rgba(16, 185, 129, 0.5); border-radius: 16px; padding: 2rem; max-width: 500px; width: 90%;">
@@ -2691,6 +2712,113 @@ class DeveloperRoutes {
                 document.getElementById('manager-history-modal').style.display = 'none';
             }
 
+            // ✨ 상세 피드백 모달 함수들
+            function showChangeDetailsModal(data, type) {
+                const modal = document.getElementById('change-details-modal');
+                const titleEl = document.getElementById('change-details-title');
+                const subtitleEl = document.getElementById('change-details-subtitle');
+                const contentEl = document.getElementById('change-details-content');
+
+                // 타입에 따라 제목 및 아이콘 설정
+                if (type === 'bug') {
+                    titleEl.textContent = '🐛 버그 수정 완료';
+                    titleEl.style.color = '#10B981';
+                } else if (type === 'feature') {
+                    titleEl.textContent = '✨ 기능 추가 완료';
+                    titleEl.style.color = '#8B5CF6';
+                }
+
+                // 부제목 (버전 정보)
+                const versionText = data.version ? \`버전 \${data.version}로 업데이트되었습니다\` : '업데이트 완료';
+                const timestamp = new Date().toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                subtitleEl.textContent = \`\${versionText} • \${timestamp}\`;
+
+                // 내용 생성
+                let contentHTML = '';
+
+                // 1. 메시지 표시
+                if (data.message) {
+                    contentHTML += \`
+                        <div style="padding: 1rem; background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10B981; border-radius: 8px; margin-bottom: 1.5rem;">
+                            <div style="color: #10B981; font-weight: 600; font-size: 0.95rem;">
+                                \${data.message}
+                            </div>
+                        </div>
+                    \`;
+                }
+
+                // 2. 상세 변경 사항 표시 (우선순위 높음)
+                if (data.changeDetails && data.changeDetails.length > 0) {
+                    contentHTML += \`
+                        <div style="margin-bottom: 1.5rem;">
+                            <h4 style="color: #A5B4FC; font-size: 1rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center;">
+                                📝 상세 변경 내역
+                            </h4>
+                            <ul style="list-style: none; padding: 0; margin: 0;">
+                    \`;
+
+                    data.changeDetails.forEach((change, index) => {
+                        contentHTML += \`
+                            <li style="padding: 0.75rem 1rem; background: rgba(15, 23, 42, 0.7); border-radius: 8px; margin-bottom: 0.5rem; border-left: 3px solid #8B5CF6; display: flex; align-items: start;">
+                                <span style="color: #8B5CF6; margin-right: 0.75rem; font-weight: 600; min-width: 24px;">\${index + 1}.</span>
+                                <span style="color: #E2E8F0; font-size: 0.95rem; line-height: 1.6;">\${change}</span>
+                            </li>
+                        \`;
+                    });
+
+                    contentHTML += \`
+                            </ul>
+                        </div>
+                    \`;
+                }
+
+                // 3. 간단한 변경 요약 (폴백)
+                if (data.changes && data.changes.length > 0) {
+                    contentHTML += \`
+                        <div style="margin-bottom: 1rem;">
+                            <h4 style="color: #94A3B8; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem;">
+                                📊 변경 통계
+                            </h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    \`;
+
+                    data.changes.forEach(change => {
+                        contentHTML += \`
+                            <span style="padding: 0.375rem 0.75rem; background: rgba(100, 116, 139, 0.2); border-radius: 6px; color: #CBD5E1; font-size: 0.875rem;">
+                                \${change}
+                            </span>
+                        \`;
+                    });
+
+                    contentHTML += \`
+                            </div>
+                        </div>
+                    \`;
+                }
+
+                // 4. 안내 메시지
+                contentHTML += \`
+                    <div style="padding: 1rem; background: rgba(59, 130, 246, 0.1); border-radius: 8px; margin-top: 1.5rem;">
+                        <div style="color: #60A5FA; font-size: 0.875rem; line-height: 1.6;">
+                            <strong>💡 안내:</strong> 게임이 성공적으로 수정되었습니다. 게임 목록에서 확인할 수 있으며, 수정 이력은 "📜 이력" 버튼을 통해 볼 수 있습니다.
+                        </div>
+                    </div>
+                \`;
+
+                contentEl.innerHTML = contentHTML;
+                modal.style.display = 'flex';
+            }
+
+            function closeChangeDetailsModal() {
+                document.getElementById('change-details-modal').style.display = 'none';
+            }
+
             async function submitManagerBugReport() {
                 const bugDescription = document.getElementById('manager-bug-description').value.trim();
 
@@ -2731,8 +2859,8 @@ class DeveloperRoutes {
                     }
 
                     if (data.success) {
-                        alert('✅ 버그가 성공적으로 수정되었습니다!');
                         closeManagerBugModal();
+                        showChangeDetailsModal(data, 'bug');  // ✨ 상세 피드백 모달 표시
                         loadManagerGames();
                     } else {
                         alert('❌ ' + (data.error || '버그 수정에 실패했습니다.'));
@@ -2785,8 +2913,8 @@ class DeveloperRoutes {
                     }
 
                     if (data.success) {
-                        alert('✅ 기능이 성공적으로 추가되었습니다!');
                         closeManagerFeatureModal();
+                        showChangeDetailsModal(data, 'feature');  // ✨ 상세 피드백 모달 표시
                         loadManagerGames();
                     } else {
                         alert('❌ ' + (data.error || '기능 추가에 실패했습니다.'));

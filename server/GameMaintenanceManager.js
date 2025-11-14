@@ -275,7 +275,8 @@ class GameMaintenanceManager {
                 success: true,
                 message: '버그가 수정되었습니다!',
                 version: session.version,
-                changes: fixResult.changes
+                changes: fixResult.changes,
+                changeDetails: fixResult.changeDetails  // ✨ 상세 변경 사항
             };
 
         } catch (error) {
@@ -392,10 +393,14 @@ ${currentCode}
                 throw new Error('생성된 코드가 유효하지 않습니다');
             }
 
+            // AI 응답에서 상세한 변경 사항 추출
+            const changeDetails = this.extractChangeDetails(fullResponse);
+
             return {
                 success: true,
                 fixedCode,
-                changes: this.detectChanges(currentCode, fixedCode)
+                changes: this.detectChanges(currentCode, fixedCode),  // 폴백용 간단한 변경 감지
+                changeDetails: changeDetails  // ✨ AI가 설명한 상세 변경 사항
             };
 
         } catch (error) {
@@ -481,7 +486,8 @@ ${currentCode}
                 success: true,
                 message: '기능이 추가되었습니다!',
                 version: session.version,
-                changes: addResult.changes
+                changes: addResult.changes,
+                changeDetails: addResult.changeDetails  // ✨ 상세 변경 사항
             };
 
         } catch (error) {
@@ -592,10 +598,14 @@ ${currentCode}
                 throw new Error('생성된 코드가 유효하지 않습니다');
             }
 
+            // AI 응답에서 상세한 변경 사항 추출
+            const changeDetails = this.extractChangeDetails(fullResponse);
+
             return {
                 success: true,
                 enhancedCode,
-                changes: this.detectChanges(currentCode, enhancedCode)
+                changes: this.detectChanges(currentCode, enhancedCode),  // 폴백용 간단한 변경 감지
+                changeDetails: changeDetails  // ✨ AI가 설명한 상세 변경 사항
             };
 
         } catch (error) {
@@ -675,7 +685,64 @@ ${currentCode}
     }
 
     /**
-     * 변경 사항 감지 (간단한 버전)
+     * AI 응답에서 상세한 변경 사항 추출
+     * "변경 사항:" 또는 "추가된 기능:" 섹션을 파싱
+     */
+    extractChangeDetails(fullResponse) {
+        const changeDetails = [];
+
+        try {
+            // "변경 사항:" 또는 "추가된 기능:" 섹션 찾기
+            const changeSectionRegex = /(?:변경\s*사항|추가된\s*기능|수정\s*내용):\s*\n((?:[-*]\s*.+\n?)+)/gi;
+            const matches = [...fullResponse.matchAll(changeSectionRegex)];
+
+            if (matches.length > 0) {
+                // 모든 매치에서 항목 추출
+                for (const match of matches) {
+                    const section = match[1];
+                    // 각 라인을 파싱 (- 또는 * 로 시작하는 항목)
+                    const items = section.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.startsWith('-') || line.startsWith('*'))
+                        .map(line => line.replace(/^[-*]\s*/, '').trim())
+                        .filter(item => item.length > 0);
+
+                    changeDetails.push(...items);
+                }
+            }
+
+            // 변경 사항을 찾지 못한 경우, 코드 블록 앞의 설명 추출 시도
+            if (changeDetails.length === 0) {
+                // ```html 앞에 있는 내용 추출
+                const beforeCodeRegex = /^([\s\S]*?)```html/;
+                const beforeCodeMatch = fullResponse.match(beforeCodeRegex);
+
+                if (beforeCodeMatch) {
+                    const description = beforeCodeMatch[1].trim();
+                    // 마지막 몇 줄에서 중요한 변경 사항 추출
+                    const lines = description.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.length > 5); // 너무 짧은 라인 제외
+
+                    if (lines.length > 0) {
+                        // 마지막 5줄 정도만 가져오기
+                        const relevantLines = lines.slice(-5);
+                        changeDetails.push(...relevantLines);
+                    }
+                }
+            }
+
+            console.log(`📝 추출된 변경 사항: ${changeDetails.length}개`);
+            return changeDetails.length > 0 ? changeDetails : ['코드가 수정되었습니다'];
+
+        } catch (error) {
+            console.error('❌ 변경 사항 추출 실패:', error.message);
+            return ['코드가 수정되었습니다'];
+        }
+    }
+
+    /**
+     * 변경 사항 감지 (간단한 버전 - 폴백용)
      */
     detectChanges(oldCode, newCode) {
         const changes = [];
